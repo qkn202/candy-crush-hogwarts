@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-title" content="Candy Hogwarts" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Candy Hogwarts" />
-    <title>Candy Crush Hogwarts — Kẹo Đậu Bertie & Ếch Sô-cô-la (Season 1: 100 Màn)</title>
+    <title>Candy Crush Hogwarts — 7 Năm Học Phép Thuật (7.777 Màn)</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -30,11 +30,11 @@
     <div class="app-shell">
       <!-- Thanh Tiêu Đề Tiệm Kẹo Phép Thuật Công Tước Mật (Honeydukes × Hogwarts) -->
       <header class="topbar">
-        <button type="button" class="brand" id="btn-home-brand" title="Về Bản Đồ Season 1">
+        <button type="button" class="brand" id="btn-home-brand" title="Về Bản Đồ 7 Năm Học Hogwarts">
           <img src="/assets/icon-bertie-box.png" alt="" class="brand-candy-icon" />
           <div class="brand-text">
             <span class="brand-title">CANDY CRUSH <span class="brand-hpvn">HOGWARTS</span></span>
-            <span class="brand-sub">Kẹo Đậu Đủ Vị Bertie & Ếch Sô-cô-la • 100 Màn</span>
+            <span class="brand-sub">7 Năm Học Phép Thuật • 77 Chương • 7.777 Màn</span>
           </div>
         </button>
 
@@ -54,7 +54,7 @@
               id="btn-hearts-chip"
               title="Tim Phép Thuật (15 phút hồi 1 Tim — bấm để nạp đầy ngay)"
             >
-              <span class="heart-glyph" aria-hidden="true">❤️</span>
+              <span class="heart-glyph" id="hud-heart-glyph" aria-hidden="true">❤️</span>
               <span class="visually-hidden">Tim Phép Thuật: </span>
               <strong id="hud-hearts">5/5</strong>
               <small class="heart-timer" id="hud-heart-timer" hidden>15:00</small>
@@ -70,9 +70,9 @@
               <strong id="hud-galleons">250</strong>
             </span>
 
-            <span class="chip chip-star" title="Tổng Sao Season 1">
+            <span class="chip chip-star" id="chip-total-stars" title="Tổng Sao 7 Năm Học Hogwarts (23.331 ★)">
               <span class="star-glyph" aria-hidden="true">★</span>
-              <strong id="hud-total-stars">0/300</strong>
+              <strong id="hud-total-stars">0/23.331</strong>
             </span>
           </div>
 
@@ -85,18 +85,18 @@
             <span aria-hidden="true">🎡</span>
             <span class="btn-label-desktop">Quay Thưởng</span>
             <span class="btn-label-mobile">Quay</span>
-            <span class="free-spin-dot" id="wheel-free-dot" hidden aria-label="Có lượt quay miễn phí"></span>
+            <span class="free-spin-dot" id="wheel-free-dot" hidden><span class="visually-hidden"> (Có lượt quay miễn phí)</span></span>
           </button>
 
           <button
             type="button"
             class="candy-nav-btn btn-candy-purple"
             id="btn-open-album"
-            title="Bộ Sưu Tập 12 Thẻ Ếch Sô-cô-la Danh Nhân"
+            title="Bộ Sưu Tập 21 Thẻ Ếch Danh Nhân & Tinh Thông Đũa Phép"
           >
             <span aria-hidden="true">🃏</span>
             <span class="btn-label-desktop">Thẻ Ếch</span>
-            <strong id="hud-album-count">0/12</strong>
+            <strong id="hud-album-count">0/21</strong>
           </button>
 
           <button type="button" class="candy-nav-btn btn-candy-yellow" id="btn-open-leaderboard" title="Bảng Xếp Hạng & Cúp 4 Nhà">
@@ -136,11 +136,46 @@
       </header>
 
       <main id="main-content" class="app-main">
-        <!-- MÀN HÌNH 1: BẢN ĐỒ ĐƯỜNG MÒN UỐN LƯỢN SAGA SEASON 1 (100 MÀN) -->
+        <!-- MÀN HÌNH 1: BẢN ĐỒ ĐƯỜNG MÒN UỐN LƯỢN 7 NĂM HỌC HOGWARTS (7.777 MÀN / 77 CHƯƠNG) -->
         <div id="view-map" class="view-map">
-          <h1 class="visually-hidden">Bản Đồ Season 1 — Candy Crush Hogwarts</h1>
+          <h1 class="visually-hidden">Bản Đồ 7 Năm Học Hogwarts — 7.777 Màn Candy Crush</h1>
           <div class="map-toolbar">
-            <nav class="chapter-tabs" id="chapter-tabs" aria-label="Chọn Chương Season 1"></nav>
+            <div class="map-year-bar">
+              <div class="year-select-wrap">
+                <label for="season-select" class="visually-hidden">Chọn Năm Học Hogwarts (Năm 1 đến Năm 7)</label>
+                <select class="year-select" id="season-select" name="seasonYear">
+                  <button>
+                    <selectedcontent></selectedcontent>
+                  </button>
+                  <option value="1" selected>Năm 1: Hòn Đá Phù Thủy (1–1.111)</option>
+                  <option value="2">Năm 2: Phòng Chứa Bí Mật (1.112–2.222)</option>
+                  <option value="3">Năm 3: Tù Nhân Azkaban (2.223–3.333)</option>
+                  <option value="4">Năm 4: Chiếc Cốc Lửa (3.334–4.444)</option>
+                  <option value="5">Năm 5: Hội Phượng Hoàng (4.445–5.555)</option>
+                  <option value="6">Năm 6: Hoàng Tử Lai (5.556–6.666)</option>
+                  <option value="7">Năm 7: Bảo Bối Tử Thần (6.667–7.777)</option>
+                </select>
+              </div>
+
+              <form id="form-jump-level" class="level-jump-form">
+                <label for="jump-level-input" class="visually-hidden">Nhập số màn muốn mở từ 1 đến 7777</label>
+                <input
+                  id="jump-level-input"
+                  name="jumpLevel"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  max="7777"
+                  placeholder="Màn 1..7777"
+                />
+                <button type="submit" class="candy-pill-btn btn-candy-yellow" title="Tới thẳng màn bất kỳ từ 1 đến 7.777">
+                  Tới
+                </button>
+              </form>
+            </div>
+
+            <nav class="chapter-tabs" id="chapter-tabs" aria-label="Chọn Chương trong Năm Học đang xem"></nav>
+
             <div class="map-quick-tools">
               <button type="button" class="candy-pill-btn btn-candy-green" id="btn-jump-current">
                 ▶ Tới Màn <span id="lbl-current-level">1</span>
@@ -149,12 +184,12 @@
                 type="button"
                 class="candy-pill-btn btn-candy-purple"
                 id="btn-map-album"
-                title="Bộ Sưu Tập 12 Thẻ Ếch Sô-cô-la & Chỉ Số Vĩnh Viễn"
+                title="Bộ Sưu Tập 21 Thẻ Ếch Danh Nhân & Tinh Thông Đũa Phép Năm 1–7"
               >
-                🃏 Thẻ Ếch: <strong id="lbl-map-album">0/12</strong>
+                🃏 <span class="btn-label-desktop">Thẻ Ếch: </span><strong id="lbl-map-album">0/21</strong>
               </button>
               <button type="button" class="candy-pill-btn btn-candy-blue" id="btn-toggle-preview" aria-pressed="false">
-                🔓 <span class="btn-label-desktop">Mở Thử </span>100 Màn: <strong id="lbl-preview-state">Tắt</strong>
+                🔓 <span class="btn-label-desktop">Mở Thử </span>7.777 Màn: <strong id="lbl-preview-state">Tắt</strong>
               </button>
             </div>
           </div>
@@ -435,45 +470,53 @@
         <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
 
         <div class="guide-tabs" id="guide-tabs" role="tablist" aria-label="Phân loại Tiệm và Cẩm nang">
-          <button type="button" class="guide-tab-btn active" id="tab-guide-shop" role="tab" aria-selected="true" aria-controls="guide-section-shop">
+          <button
+            type="button"
+            class="guide-tab-btn active"
+            id="tab-guide-shop"
+            role="tab"
+            tabindex="0"
+            aria-selected="true"
+            aria-controls="guide-section-shop"
+          >
             🛍️ Tiệm Kẹo Phép
           </button>
-          <button type="button" class="guide-tab-btn" id="tab-guide-rules" role="tab" aria-selected="false" aria-controls="guide-section-rules">
+          <button
+            type="button"
+            class="guide-tab-btn"
+            id="tab-guide-rules"
+            role="tab"
+            tabindex="-1"
+            aria-selected="false"
+            aria-controls="guide-section-rules"
+          >
             ✨ Cẩm Nang Combo
           </button>
         </div>
 
         <div class="guide-grid" id="guide-grid-container" data-active-tab="shop">
           <section class="guide-box" id="guide-section-rules" role="tabpanel" aria-labelledby="tab-guide-rules">
-            <h3>✨ Cẩm Nang Cơ Chế Chuẩn Candy Crush × Hogwarts</h3>
+            <h3>✨ Cẩm Nang 7 Năm Học Hogwarts (7.777 Màn)</h3>
             <ul class="spell-rules-list">
               <li>
-                <strong>🍬 Kẹo Sọc Theo Hướng Vuốt (Ghép 4 thẳng hàng):</strong>
-                Vuốt ngang tạo Sọc Ngang, vuốt dọc tạo Sọc Dọc — phóng tia phép quét sạch hàng/cột (lưu ý bị chặn tại ô <em>Xoáy Cam Thảo</em>)!
+                <strong>🍬 Kẹo Sọc (Ghép 4) • 🪶 Cánh Vàng Snitch (2×2) • 🎁 Kẹo Bọc Nổ Kép (T/L) • 🍫 Cầu Ngũ Sắc (Ghép 5):</strong>
+                Phối hợp 2 Kẹo Phép kề nhau để nhân bản toàn bàn hoặc quét sạch hàng/cột khổng lồ!
               </li>
               <li>
-                <strong>🪶 Kẹo Cánh Vàng Tầm Thủ (Ghép Ô Vuông 2×2):</strong>
-                Vuốt đổi chỗ trực tiếp hoặc ghép bộ để triệu hồi cánh Snitch bay vòng cung bắn tỉa thẳng vào Bom, Chướng ngại vật hoặc Kẹo mục tiêu!
+                <strong>🐍 Năm 2 — Hoá Đá Tử Xà &amp; 👻 Năm 3 — Giám Ngục Azkaban:</strong>
+                <em>Hoá Đá (1–3 lớp)</em> khoá cứng viên kẹo khiến nó không thể ghép màu hay rơi cho tới khi đập vỡ vỏ đá; <em>Giám Ngục (2–4 HP)</em> hút Nộ Hộ Mệnh mỗi lượt nhưng sẽ bị <strong>thanh tẩy toàn bàn tức khắc</strong> khi gọi <em>Expecto Patronum</em> (Phím <code>P</code>)!
               </li>
               <li>
-                <strong>🎁 Gói Kẹo Bọc Nổ Kép 2 Nhịp (Ghép chữ T / chữ L):</strong>
-                Nổ chấn động vùng <strong>3×3</strong> nhịp 1, rơi theo trọng lực rồi tự động kích <strong>Nổ Kép 3×3 nhịp 2</strong>!
+                <strong>🌪️ Năm 4 — Gió Lốc Mê Cung (Khay 10×10) &amp; 📜 Năm 5 — Bia Sắc Lệnh Umbridge:</strong>
+                <em>Gió Mê Cung</em> tự cuốn trượt hàng kẹo theo chu kỳ lượt trên đại bàn cờ <code>10×10</code>; <em>Bia Sắc Lệnh Hồng</em> phong ấn kết tinh Kẹo Phép trong vùng <strong>3×3</strong> quanh bia cho tới khi bị phá vỡ!
               </li>
               <li>
-                <strong>🍫 Cầu Đậu Ngũ Sắc (Ghép 5) & Đại Tiệc Phối Hợp:</strong>
-                Đổi chỗ với Kẹo Sọc / Kẹo Bọc / Cánh Vàng Tầm Thủ để nhân bản hàng loạt khắp bàn cờ; 2 Cầu Ngũ Sắc xoá sạch toàn bàn!
+                <strong>🔥 Năm 6 — Lửa Địa Ngục Fiendfyre &amp; 💀 Năm 7 — Trường Sinh Linh Giá:</strong>
+                <em>Lửa Fiendfyre</em> tự bùng lan sau mỗi 2 lượt không dập và nung ngắn ngòi Bom đứng gần; <em>Trường Sinh Linh Giá</em> mang <strong>Khiên Hồn (HP ≥ 4)</strong> miễn nhiễm ghép thường cạnh bên — bắt buộc dùng Kẹo Phép, Thần Hộ Mệnh hoặc Búa phá khiên, khi vỡ <strong>trừ thẳng 600 HP Đại Trùm</strong>!
               </li>
               <li>
-                <strong>💎 Bảo Vật & Chướng Ngại Vật Kinh Điển:</strong>
-                Dẫn <em>Hòn Đá Phù Thủy</em> xuống đáy bàn; phá <em>Đá Cổ Ngữ</em>, <em>Xoáy Cam Thảo</em>, <em>Sô-cô-la Tự Lan</em>, <em>Bom Đếm Ngược</em> và dùng <em>Lò Sưởi Bột Floo</em> dịch chuyển!
-              </li>
-              <li>
-                <strong>🔄 Băng Chuyền • 🧪 Vạc Độc Dược • 🗝️ Khoá Gringotts:</strong>
-                <em>Băng Chuyền</em> xoay vòng kẹo 1 nấc cuối mỗi lượt; <em>Vạc Độc Dược (3 HP)</em> tự trào bọt cản đường sau mỗi 3 lượt nếu không bị ghép kẹo sát cạnh làm choáng; ăn kẹo mang <em>Chìa Khoá Đường Vàng</em> để mở các ô <em>Ổ Khoá Gringotts</em>!
-              </li>
-              <li>
-                <strong>🦌 Thần Hộ Mệnh 4 Nhà • 👑 Đấu Trùm • 🃏 12 Thẻ Ếch:</strong>
-                Mỗi Nhà Hogwarts có Nội Tại riêng và Thanh Nộ <em>Expecto Patronum</em> (100% tung tuyệt kỹ miễn phí lượt đi, phím <code>P</code>); đại chiến 10 Đại Trùm ở màn 10..100, mở <em>Rương Sao Chương (20★/40★/60★)</em> và sưu tầm <em>12 Thẻ Ếch Danh Nhân</em> cộng chỉ số vĩnh viễn!
+                <strong>👑 Đại Trùm 2 Pha • 🎓 Thi Vượt Năm O.W.L. • ❤️‍🔥 Bất Tử Tim • 🪄 Tinh Thông Đũa Phép:</strong>
+                Đại Trùm nổi giận <em>Cuồng Nộ Pha 2</em> khi máu xuống ≤ 50%; bạn có thể <em>Thi Vượt Năm</em> để mở sớm bất kỳ Năm 2–7 nào, tích Sao thăng cấp <em>Đũa Phép Năm 1–7</em> và sưu tầm <em>21 Thẻ Ếch Danh Nhân</em>!
               </li>
             </ul>
           </section>
@@ -517,29 +560,31 @@
       </div>
     </dialog>
 
-    <!-- HỘP THOẠI 7: BỘ SƯU TẬP 12 THẺ ẾCH SÔ-CÔ-LA DANH NHÂN -->
+    <!-- HỘP THOẠI 7: BỘ SƯU TẬP 21 THẺ ẾCH SÔ-CÔ-LA & TINH THÔNG ĐŨA PHÉP -->
     <dialog id="album-dialog" class="candy-dialog" aria-labelledby="album-title" closedby="any">
       <div class="dialog-card dialog-wide album-dialog-card">
         <div class="dialog-ribbon">
-          <span class="ribbon-sub">BỘ SƯU TẬP PHÉP THUẬT VĨNH VIỄN</span>
-          <h2 id="album-title">🃏 Album 12 Thẻ Ếch Sô-cô-la Danh Nhân</h2>
+          <span class="ribbon-sub">BỘ SƯU TẬP &amp; ĐŨA PHÉP VĨNH VIỄN</span>
+          <h2 id="album-title">🃏 Album 21 Thẻ Ếch &amp; Tinh Thông Đũa Phép</h2>
         </div>
         <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
 
         <div class="album-summary-box">
+          <div class="wand-mastery-banner" id="wand-mastery-banner"></div>
+
           <div class="album-summary-top">
-            <strong id="album-count-heading">Đã sưu tầm: 0 / 12 Thẻ Danh Nhân</strong>
+            <strong id="album-count-heading">Đã sưu tầm: 0 / 21 Thẻ Danh Nhân</strong>
             <span class="album-frog-counter" id="album-frog-counter">🐸 Đã bắt 0/40 Ếch tới thẻ kế</span>
           </div>
           <progress
             id="album-progress-bar"
             class="candy-progress album-progress"
-            max="12"
+            max="21"
             value="0"
             aria-labelledby="album-count-heading"
           ></progress>
           <p class="album-buffs-line" id="album-buffs-summary">
-            Sưu tầm Thẻ Ếch từ Màn Trùm (10, 20...100), Rương 60★ Chương, mỗi 40 Ếch Sô-cô-la bắt được hoặc thắng 3★ lần đầu để cộng chỉ số vĩnh viễn!
+            Sưu tầm 21 Thẻ Ếch từ Màn Trùm, Rương Sao Chương cuối, mỗi 40 Ếch Sô-cô-la bắt được hoặc thắng 3★ lần đầu để cộng chỉ số vĩnh viễn xuyên suốt 7.777 màn!
           </p>
         </div>
 

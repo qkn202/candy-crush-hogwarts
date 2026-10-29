@@ -1,17 +1,26 @@
-// Quản lý Hồ sơ Phù Thủy, Tiến độ 100 Bản Đồ Season 1, 5 Tim Phép Thuật, Chuỗi Thắng Cốc Lửa,
-// Bộ Sưu Tập 12 Thẻ Ếch Sô-cô-la, Rương Sao Chương, Vòng Quay Hàng Ngày & Bảng Xếp Hạng Cúp 4 Nhà
+// Quản lý Hồ sơ Phù Thủy, Tiến độ 7 Năm Học Hogwarts (7.777 Màn / 77 Chương),
+// Tim Phép Thuật & Bất Tử Tim Ngắn Hạn, Chuỗi Thắng Cốc Lửa, Tinh Thông Đũa Phép Năm 1–7,
+// Bộ Sưu Tập 21 Thẻ Ếch Sô-cô-la, Rương Sao Chương, Vòng Quay Hàng Ngày & Cúp 4 Nhà
 
 import {
   BOOSTERS,
-  CHAPTER_STAR_CHESTS,
+  CHAPTERS_PER_SEASON,
   CHOCOLATE_FROG_CARDS,
+  HOGWARTS_SEASONS,
+  LEVELS_PER_SEASON,
   PREGAME_BOOSTERS,
-  SEASON_1_CHAPTERS
+  TOTAL_CHAPTERS,
+  TOTAL_LEVELS,
+  TOTAL_SEASONS,
+  getChapterStarChests,
+  getSeasonByLevel,
+  getWandMasteryByStars
 } from '../data/lore.js';
 
 const STORAGE_KEY = 'hpvn_season1_state_v1';
 export const MAX_HEARTS = 5;
 export const HEART_REGEN_MS = 15 * 60 * 1000; // 15 phút hồi 1 Tim
+const MAX_INFINITE_MS = 24 * 60 * 60 * 1000; // Cộng dồn tối đa 24 giờ Tim Bất Tử
 
 const SEEDED_RIVALS = [
   { id: 'npc_1', name: 'Minh Khôi Potter', house: 'gryffindor', totalScore: 98400, stars: 48, highestLevel: 19, isNpc: true },
@@ -26,9 +35,8 @@ const SEEDED_RIVALS = [
 
 const VALID_HOUSES = new Set(['gryffindor', 'slytherin', 'ravenclaw', 'hufflepuff']);
 const VALID_CARD_IDS = new Set(CHOCOLATE_FROG_CARDS.map((c) => c.id));
-const VALID_STAR_CHEST_KEYS = new Set(
-  SEASON_1_CHAPTERS.flatMap((ch) => CHAPTER_STAR_CHESTS.map((chest) => `ch${ch.id}_${chest.threshold}`))
-);
+// Giữ tương thích cả key rương cũ (20/40/60) lẫn 77 Chương mới (100/200/300 & 110/220/333)
+const VALID_STAR_CHEST_KEY_RE = /^ch([1-9]|[1-6]\d|7[0-7])_(20|40|60|100|110|200|220|300|333)$/;
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]{1,48}$/;
 
 function clampInt(val, min, max, fallback) {
@@ -52,6 +60,25 @@ function getLocalDayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+export function getGlobalChapterBounds(globalChapterId) {
+  const cid = Number(globalChapterId);
+  if (!Number.isInteger(cid) || cid < 1 || cid > TOTAL_CHAPTERS) return null;
+  const seasonIdx = Math.floor((cid - 1) / CHAPTERS_PER_SEASON);
+  const chapterInSeason = ((cid - 1) % CHAPTERS_PER_SEASON) + 1;
+  const seasonStart = seasonIdx * LEVELS_PER_SEASON + 1;
+  const start = seasonStart + (chapterInSeason - 1) * 100;
+  const end = chapterInSeason === CHAPTERS_PER_SEASON ? seasonStart + LEVELS_PER_SEASON - 1 : start + 99;
+  const maxStars = (end - start + 1) * 3;
+  return {
+    id: cid,
+    globalChapterId: cid,
+    seasonId: seasonIdx + 1,
+    chapterIndexInSeason: chapterInSeason,
+    range: [start, end],
+    maxStars
+  };
+}
+
 function createDefaultPlayer(name = '', house = 'gryffindor') {
   return {
     id: generatePlayerId(),
@@ -60,9 +87,11 @@ function createDefaultPlayer(name = '', house = 'gryffindor') {
     galleons: 250,
     hearts: MAX_HEARTS,
     nextHeartAt: null,
+    infiniteHeartsUntil: 0,
     winStreak: 0,
     lastDailySpinDate: '',
     unlockAllPreview: false,
+    unlockedSeasons: [1],
     boosters: {
       hammer: 3,
       swap: 2,
@@ -89,12 +118,17 @@ function migratePlayer(p) {
   const safeId = typeof p.id === 'string' && SAFE_ID_RE.test(p.id) ? p.id : generatePlayerId();
   const safeName = sanitizePlayerName(p.name);
   const safeHouse = VALID_HOUSES.has(p.house) ? p.house : 'gryffindor';
-  const safeGalleons = clampInt(p.galleons, 0, 9999999, 250);
+  const safeGalleons = clampInt(p.galleons, 0, 99999999, 250);
   const safeHearts = clampInt(p.hearts, 0, MAX_HEARTS, MAX_HEARTS);
+  const now = Date.now();
   const safeNextHeartAt =
     typeof p.nextHeartAt === 'number' && Number.isFinite(p.nextHeartAt) && p.nextHeartAt > 0
-      ? Math.floor(p.nextHeartAt)
+      ? Math.min(now + HEART_REGEN_MS, Math.floor(p.nextHeartAt))
       : null;
+  const safeInfiniteUntil =
+    typeof p.infiniteHeartsUntil === 'number' && Number.isFinite(p.infiniteHeartsUntil) && p.infiniteHeartsUntil > 0
+      ? Math.min(now + MAX_INFINITE_MS, Math.floor(p.infiniteHeartsUntil))
+      : 0;
   const safeStreak = clampInt(p.winStreak, 0, 3, 0);
   const safeSpinDate = typeof p.lastDailySpinDate === 'string' ? p.lastDailySpinDate.slice(0, 16) : '';
 
@@ -124,21 +158,40 @@ function migratePlayer(p) {
   const safeClaimedChests = {};
   if (p.claimedStarChests && typeof p.claimedStarChests === 'object') {
     for (const [k, val] of Object.entries(p.claimedStarChests)) {
-      if (VALID_STAR_CHEST_KEYS.has(k) && val === true) {
+      if (VALID_STAR_CHEST_KEY_RE.test(k) && val === true) {
         safeClaimedChests[k] = true;
       }
     }
   }
 
   const safeProgress = {};
+  const seasonSet = new Set([1]);
+  if (Array.isArray(p.unlockedSeasons)) {
+    for (const rawS of p.unlockedSeasons) {
+      const sNum = Number(rawS);
+      if (Number.isInteger(sNum) && sNum >= 1 && sNum <= TOTAL_SEASONS) {
+        seasonSet.add(sNum);
+      }
+    }
+  }
+
   if (p.levelProgress && typeof p.levelProgress === 'object') {
     for (const [lvlKey, info] of Object.entries(p.levelProgress)) {
       const lvlNum = Number(lvlKey);
-      if (!Number.isInteger(lvlNum) || lvlNum < 1 || lvlNum > 100 || !info || typeof info !== 'object') continue;
-      safeProgress[lvlNum] = {
-        stars: clampInt(info.stars, 0, 3, 0),
-        highScore: clampInt(info.highScore, 0, 99999999, 0)
-      };
+      if (!Number.isInteger(lvlNum) || lvlNum < 1 || lvlNum > TOTAL_LEVELS || !info || typeof info !== 'object') {
+        continue;
+      }
+      const stars = clampInt(info.stars, 0, 3, 0);
+      const highScore = clampInt(info.highScore, 0, 999999999, 0);
+      safeProgress[lvlNum] = { stars, highScore };
+      if (stars > 0) {
+        const s = getSeasonByLevel(lvlNum);
+        seasonSet.add(s.id);
+        // Nếu đã thắng màn kết Năm Học (1111, 2222...), mở luôn Năm tiếp theo
+        if (lvlNum === s.finaleLevelId && s.id < TOTAL_SEASONS) {
+          seasonSet.add(s.id + 1);
+        }
+      }
     }
   }
 
@@ -149,9 +202,11 @@ function migratePlayer(p) {
     galleons: safeGalleons,
     hearts: safeHearts,
     nextHeartAt: safeNextHeartAt,
+    infiniteHeartsUntil: safeInfiniteUntil,
     winStreak: safeStreak,
     lastDailySpinDate: safeSpinDate,
     unlockAllPreview: Boolean(p.unlockAllPreview),
+    unlockedSeasons: Array.from(seasonSet).sort((a, b) => a - b),
     boosters: safeBoosters,
     preBoosters: safePreBoosters,
     frogCards: safeFrogCards,
@@ -226,11 +281,20 @@ export class StorageService {
     return [...this.data.players];
   }
 
+  getWandMastery(player = this.getActivePlayer()) {
+    const stats = player ? this.getPlayerStats(player) : { stars: 0 };
+    return {
+      ...getWandMasteryByStars(stats.stars),
+      totalStars: stats.stars
+    };
+  }
+
   getCollectionBuffs(player = this.getActivePlayer()) {
-    let scoreBonusPct = 0;
+    let cardScoreBonusPct = 0;
     let patronusBonusPct = 0;
     let shopDiscountPct = 0;
     let bonusClearGalleons = 0;
+    let cardBossDamagePct = 0;
     let uniqueCount = 0;
     let totalCopies = 0;
 
@@ -240,15 +304,26 @@ export class StorageService {
       if (cnt > 0) {
         uniqueCount++;
         totalCopies += cnt;
-        if (card.buffType === 'score_pct') scoreBonusPct += card.buffValue;
+        if (card.buffType === 'score_pct') cardScoreBonusPct += card.buffValue;
         else if (card.buffType === 'patronus_pct') patronusBonusPct += card.buffValue;
         else if (card.buffType === 'shop_discount') shopDiscountPct += card.buffValue;
         else if (card.buffType === 'clear_galleons') bonusClearGalleons += card.buffValue;
+        else if (card.buffType === 'boss_dmg_pct') cardBossDamagePct += card.buffValue;
       }
     }
 
+    const wand = this.getWandMastery(player);
+
     return {
-      scoreBonusPct,
+      cardScoreBonusPct,
+      cardBossDamagePct,
+      wandScoreBonusPct: wand.scorePct,
+      wandBossDamagePct: wand.bossDmgPct,
+      wandRank: wand.rank,
+      wandTitle: wand.title,
+      wandNextTier: wand.nextTier,
+      scoreBonusPct: cardScoreBonusPct + wand.scorePct,
+      bossDamageBonusPct: cardBossDamagePct + wand.bossDmgPct,
       patronusBonusPct,
       shopDiscountPct,
       bonusClearGalleons,
@@ -278,14 +353,14 @@ export class StorageService {
 
     let duplicateGalleons = 0;
     if (!isNew) {
-      duplicateGalleons = 25;
+      duplicateGalleons = 30;
       player.galleons += duplicateGalleons;
     }
     return { card, isNew, duplicateGalleons };
   }
 
-  getChapterStars(chapterId, player = this.getActivePlayer()) {
-    const ch = SEASON_1_CHAPTERS.find((c) => c.id === Number(chapterId));
+  getChapterStars(globalChapterId, player = this.getActivePlayer()) {
+    const ch = getGlobalChapterBounds(globalChapterId);
     if (!ch || !player) return 0;
     let sum = 0;
     for (let lvl = ch.range[0]; lvl <= ch.range[1]; lvl++) {
@@ -294,12 +369,15 @@ export class StorageService {
     return sum;
   }
 
-  claimChapterStarChest(chapterId, threshold) {
+  claimChapterStarChest(globalChapterId, threshold) {
     const player = this.getActivePlayer();
     if (!player) return { ok: false, reason: 'Chưa có hồ sơ Phù Thủy.' };
-    const ch = SEASON_1_CHAPTERS.find((c) => c.id === Number(chapterId));
-    const chestMeta = CHAPTER_STAR_CHESTS.find((c) => c.threshold === Number(threshold));
-    if (!ch || !chestMeta) return { ok: false, reason: 'Không tìm thấy Rương Sao Chương.' };
+    const ch = getGlobalChapterBounds(globalChapterId);
+    if (!ch) return { ok: false, reason: 'Không tìm thấy Chương bản đồ.' };
+
+    const chests = getChapterStarChests(ch.maxStars);
+    const chestMeta = chests.find((c) => c.threshold === Number(threshold));
+    if (!chestMeta) return { ok: false, reason: 'Không tìm thấy Rương Sao Chương.' };
 
     if (!player.claimedStarChests) player.claimedStarChests = {};
     const key = `ch${ch.id}_${chestMeta.threshold}`;
@@ -311,7 +389,7 @@ export class StorageService {
     if (chapterStars < chestMeta.threshold) {
       return {
         ok: false,
-        reason: `Cần đạt ${chestMeta.threshold} ★ ở Chương ${ch.id} (hiện có ${chapterStars}/60 ★) — thưởng ${chestMeta.summary}!`
+        reason: `Cần đạt ${chestMeta.threshold} ★ ở Chương ${ch.chapterIndexInSeason} Năm ${ch.seasonId} (hiện có ${chapterStars}/${ch.maxStars} ★) — thưởng ${chestMeta.summary}!`
       };
     }
 
@@ -322,6 +400,9 @@ export class StorageService {
     }
     if (chestMeta.preBoosterId) {
       player.preBoosters[chestMeta.preBoosterId] = (player.preBoosters[chestMeta.preBoosterId] || 0) + 1;
+    }
+    if (chestMeta.infiniteHeartsMin > 0) {
+      this.grantInfiniteHearts(chestMeta.infiniteHeartsMin, player, false);
     }
 
     let droppedCard = null;
@@ -334,11 +415,79 @@ export class StorageService {
     return { ok: true, chestMeta, droppedCard };
   }
 
+  isInfiniteHeartsActive(player = null) {
+    const p =
+      player || (this.data.activePlayerId ? this.data.players.find((pl) => pl.id === this.data.activePlayerId) : null);
+    if (!p) return false;
+    return (p.infiniteHeartsUntil || 0) > Date.now();
+  }
+
+  grantInfiniteHearts(minutes, player = null, persist = true) {
+    const p =
+      player || (this.data.activePlayerId ? this.data.players.find((pl) => pl.id === this.data.activePlayerId) : null);
+    if (!p) return 0;
+    const safeMin = Math.max(1, Math.floor(Number(minutes) || 0));
+    const now = Date.now();
+    const base = Math.max(now, p.infiniteHeartsUntil || 0);
+    p.infiniteHeartsUntil = Math.min(now + MAX_INFINITE_MS, base + safeMin * 60 * 1000);
+    p.hearts = MAX_HEARTS;
+    p.nextHeartAt = null;
+    p.updatedAt = now;
+    if (persist) this.save();
+    return p.infiniteHeartsUntil;
+  }
+
+  buyInfiniteHearts(minutes = 30, basePrice = 160) {
+    const p = this.getActivePlayer();
+    if (!p) return { ok: false, reason: 'Chưa có hồ sơ Phù Thủy.' };
+    const effectivePrice = this.getDiscountedPrice(basePrice, p);
+    if (p.galleons < effectivePrice) {
+      return { ok: false, reason: `Chưa đủ Vàng Galleon (cần ${effectivePrice} G).` };
+    }
+    p.galleons -= effectivePrice;
+    const until = this.grantInfiniteHearts(minutes, p, true);
+    return {
+      ok: true,
+      pricePaid: effectivePrice,
+      infiniteHeartsUntil: until,
+      msg: `Đã kích hoạt +${minutes} phút Bất Tử Tim ❤️‍🔥 (-${effectivePrice} G)!`
+    };
+  }
+
   syncHearts(player = null) {
     const p = player || (this.data.activePlayerId ? this.data.players.find((pl) => pl.id === this.data.activePlayerId) : null);
-    if (!p) return { hearts: MAX_HEARTS, maxHearts: MAX_HEARTS, nextInSec: 0 };
+    if (!p) {
+      return { hearts: MAX_HEARTS, maxHearts: MAX_HEARTS, nextInSec: 0, isInfinite: false, infiniteRemainingSec: 0 };
+    }
+
+    const now = Date.now();
+    const infUntil = p.infiniteHeartsUntil || 0;
+    if (infUntil > now) {
+      let dirty = false;
+      if (p.hearts !== MAX_HEARTS) {
+        p.hearts = MAX_HEARTS;
+        dirty = true;
+      }
+      if (p.nextHeartAt !== null) {
+        p.nextHeartAt = null;
+        dirty = true;
+      }
+      if (dirty) this.save();
+      return {
+        hearts: MAX_HEARTS,
+        maxHearts: MAX_HEARTS,
+        nextInSec: 0,
+        isInfinite: true,
+        infiniteRemainingSec: Math.max(1, Math.ceil((infUntil - now) / 1000))
+      };
+    }
 
     let dirty = false;
+    if (infUntil !== 0 && infUntil <= now) {
+      p.infiniteHeartsUntil = 0;
+      dirty = true;
+    }
+
     if (p.hearts >= MAX_HEARTS) {
       p.hearts = MAX_HEARTS;
       if (p.nextHeartAt !== null) {
@@ -346,8 +495,7 @@ export class StorageService {
         dirty = true;
       }
     } else {
-      const now = Date.now();
-      if (!p.nextHeartAt) {
+      if (!p.nextHeartAt || p.nextHeartAt > now + HEART_REGEN_MS) {
         p.nextHeartAt = now + HEART_REGEN_MS;
         dirty = true;
       } else if (now >= p.nextHeartAt) {
@@ -360,16 +508,24 @@ export class StorageService {
 
     if (dirty) this.save();
     const nextInSec = p.nextHeartAt ? Math.max(0, Math.ceil((p.nextHeartAt - Date.now()) / 1000)) : 0;
-    return { hearts: p.hearts, maxHearts: MAX_HEARTS, nextInSec };
+    return {
+      hearts: p.hearts,
+      maxHearts: MAX_HEARTS,
+      nextInSec,
+      isInfinite: false,
+      infiniteRemainingSec: 0
+    };
   }
 
   loseHeartAndStreak() {
     const p = this.getActivePlayer();
     if (!p) return;
-    if (p.hearts > 0) {
-      p.hearts--;
-      if (p.hearts < MAX_HEARTS && !p.nextHeartAt) {
-        p.nextHeartAt = Date.now() + HEART_REGEN_MS;
+    if (!this.isInfiniteHeartsActive(p)) {
+      if (p.hearts > 0) {
+        p.hearts--;
+        if (p.hearts < MAX_HEARTS && !p.nextHeartAt) {
+          p.nextHeartAt = Date.now() + HEART_REGEN_MS;
+        }
       }
     }
     p.winStreak = 0;
@@ -380,7 +536,10 @@ export class StorageService {
   refillHearts() {
     const p = this.getActivePlayer();
     if (!p) return { ok: false, reason: 'Chưa có hồ sơ Phù Thủy.' };
-    this.syncHearts(p);
+    const status = this.syncHearts(p);
+    if (status.isInfinite) {
+      return { ok: false, reason: 'Bạn đang trong thời gian Bất Tử Tim ❤️‍🔥!' };
+    }
     if (p.hearts >= MAX_HEARTS) {
       return { ok: false, reason: 'Tim Phép Thuật đã đầy 5/5!' };
     }
@@ -430,6 +589,8 @@ export class StorageService {
     } else if (segment.rewardType === 'hearts_full') {
       p.hearts = MAX_HEARTS;
       p.nextHeartAt = null;
+    } else if (segment.rewardType === 'infinite_hearts') {
+      this.grantInfiniteHearts(segment.amount || 20, p, false);
     }
     p.updatedAt = Date.now();
     this.save();
@@ -477,36 +638,96 @@ export class StorageService {
     return this.data.includeSeededRivals;
   }
 
-  getHighestUnlockedLevel(player = this.getActivePlayer()) {
-    if (!player) return 1;
-    if (player.unlockAllPreview) return 100;
-    let highestCleared = 0;
-    for (const [lvlStr, info] of Object.entries(player.levelProgress)) {
-      if (info && info.stars > 0) {
-        highestCleared = Math.max(highestCleared, Number(lvlStr));
+  isSeasonUnlocked(seasonId, player = this.getActivePlayer()) {
+    const sNum = Number(seasonId);
+    if (!Number.isInteger(sNum) || sNum < 1 || sNum > TOTAL_SEASONS) return false;
+    if (sNum === 1) return true;
+    if (!player) return false;
+    if (player.unlockAllPreview) return true;
+    if (Array.isArray(player.unlockedSeasons) && player.unlockedSeasons.includes(sNum)) return true;
+
+    const seasonMeta = HOGWARTS_SEASONS[sNum - 1];
+    const prevFinale = seasonMeta.range[0] - 1;
+    if ((player.levelProgress?.[prevFinale]?.stars || 0) > 0) return true;
+
+    for (let lvl = seasonMeta.range[0]; lvl <= seasonMeta.range[1]; lvl++) {
+      if ((player.levelProgress?.[lvl]?.stars || 0) > 0) return true;
+    }
+    return false;
+  }
+
+  getSeasonFrontierLevel(seasonId, player = this.getActivePlayer()) {
+    const seasonMeta = HOGWARTS_SEASONS[Number(seasonId) - 1];
+    if (!seasonMeta) return 1;
+    if (!player) return seasonMeta.range[0];
+    if (player.unlockAllPreview) return seasonMeta.range[1];
+    if (!this.isSeasonUnlocked(seasonMeta.id, player)) return seasonMeta.range[0] - 1;
+
+    let highestInSeason = seasonMeta.range[0] - 1;
+    for (let lvl = seasonMeta.range[0]; lvl <= seasonMeta.range[1]; lvl++) {
+      if ((player.levelProgress?.[lvl]?.stars || 0) > 0) {
+        highestInSeason = lvl;
       }
     }
-    return Math.min(100, highestCleared + 1);
+    return Math.min(seasonMeta.range[1], highestInSeason + 1);
+  }
+
+  isLevelUnlocked(levelId, player = this.getActivePlayer()) {
+    const lvl = Number(levelId);
+    if (!Number.isInteger(lvl) || lvl < 1 || lvl > TOTAL_LEVELS) return false;
+    if (!player) return lvl === 1;
+    if (player.unlockAllPreview) return true;
+    const season = getSeasonByLevel(lvl);
+    if (!this.isSeasonUnlocked(season.id, player)) return false;
+    return lvl <= this.getSeasonFrontierLevel(season.id, player);
+  }
+
+  getHighestUnlockedLevel(player = this.getActivePlayer()) {
+    if (!player) return 1;
+    if (player.unlockAllPreview) return TOTAL_LEVELS;
+    let bestFrontier = 1;
+    for (const s of HOGWARTS_SEASONS) {
+      if (this.isSeasonUnlocked(s.id, player)) {
+        bestFrontier = Math.max(bestFrontier, this.getSeasonFrontierLevel(s.id, player));
+      }
+    }
+    return bestFrontier;
   }
 
   getPlayerStats(player) {
     let totalScore = 0;
     let stars = 0;
     let highestLevel = 0;
-    for (const [lvlStr, info] of Object.entries(player.levelProgress || {})) {
+    let clearedCount = 0;
+    for (const [lvlStr, info] of Object.entries(player?.levelProgress || {})) {
       if (info) {
         totalScore += info.highScore || 0;
         stars += info.stars || 0;
-        if (info.stars > 0) highestLevel = Math.max(highestLevel, Number(lvlStr));
+        if (info.stars > 0) {
+          highestLevel = Math.max(highestLevel, Number(lvlStr));
+          clearedCount++;
+        }
       }
     }
-    return { totalScore, stars, highestLevel };
+    return { totalScore, stars, highestLevel, clearedCount };
   }
 
   recordVictory(levelId, score, stars, rewardGalleons, frogsCleared = 0) {
     const player = this.getActivePlayer();
-    if (!player) return { firstClear: false, galleonsEarned: 0, newStreak: 0, droppedCard: null };
+    if (!player) {
+      return {
+        firstClear: false,
+        galleonsEarned: 0,
+        bonusBooster: null,
+        bonusInfiniteMinutes: 0,
+        unlockedNewSeason: null,
+        wandRankUp: null,
+        newStreak: 0,
+        droppedCard: null
+      };
+    }
 
+    const prevWand = this.getWandMastery(player);
     const prev = player.levelProgress[levelId];
     const firstClear = !prev || prev.stars === 0;
     const improvedStars = Math.max(0, stars - (prev?.stars || 0));
@@ -516,9 +737,9 @@ export class StorageService {
     if (firstClear) {
       galleonsEarned = rewardGalleons + stars * 10;
     } else if (improvedStars > 0) {
-      galleonsEarned = improvedStars * 12;
+      galleonsEarned = improvedStars * 14;
     } else {
-      galleonsEarned = 5;
+      galleonsEarned = 6;
     }
 
     galleonsEarned += buffs.bonusClearGalleons;
@@ -527,22 +748,54 @@ export class StorageService {
     }
 
     // Tăng Chuỗi Thắng Chiếc Cốc Lửa (tối đa bậc 3)
-    player.winStreak = Math.min(3, (player.winStreak || 0) + 1);
+    const prevStreak = player.winStreak || 0;
+    player.winStreak = Math.min(3, prevStreak + 1);
 
-    // Thưởng thêm vật phẩm khi qua Trùm Chương (màn chia hết cho 10)
+    // Mở khoá Năm Học mới nếu vượt Kỳ Thi O.W.L./N.E.W.T. hoặc thắng Đại Kết Cục Năm Học!
+    if (!Array.isArray(player.unlockedSeasons)) player.unlockedSeasons = [1];
+    let unlockedNewSeason = null;
+    const currentSeason = getSeasonByLevel(levelId);
+    if (currentSeason.id > 1 && !player.unlockedSeasons.includes(currentSeason.id)) {
+      player.unlockedSeasons.push(currentSeason.id);
+      player.unlockedSeasons.sort((a, b) => a - b);
+      unlockedNewSeason = currentSeason.id;
+    }
+    if (levelId === currentSeason.finaleLevelId && currentSeason.id < TOTAL_SEASONS) {
+      const nextSeasonId = currentSeason.id + 1;
+      if (!player.unlockedSeasons.includes(nextSeasonId)) {
+        player.unlockedSeasons.push(nextSeasonId);
+        player.unlockedSeasons.sort((a, b) => a - b);
+        unlockedNewSeason = nextSeasonId;
+      }
+    }
+
+    // Thưởng thêm Bảo Bối khi thắng Đại Trùm (màn chia hết cho 10 hoặc Màn Kết Năm 1111..7777)
+    const isBossStage = levelId % 10 === 0 || levelId === currentSeason.finaleLevelId;
     let bonusBooster = null;
-    if (firstClear && levelId % 10 === 0) {
+    if (firstClear && isBossStage) {
       const ids = BOOSTERS.map((b) => b.id);
-      bonusBooster = ids[(levelId / 10) % ids.length];
+      bonusBooster = ids[Math.floor(levelId / 10) % ids.length];
       player.boosters[bonusBooster] = (player.boosters[bonusBooster] || 0) + 1;
     }
 
-    // Tiến độ bắt Ếch Sô-cô-la & rớt Thẻ Danh Nhân Phù Thủy
+    // Thưởng Bất Tử Tim Ngắn Hạn khi chạm cột mốc Chuỗi Thắng 3 hoặc hạ Đại Trùm lần đầu
+    let bonusInfiniteMinutes = 0;
+    if (firstClear && prevStreak < 3 && player.winStreak === 3) {
+      bonusInfiniteMinutes += 15;
+    }
+    if (firstClear && isBossStage) {
+      bonusInfiniteMinutes += levelId === currentSeason.finaleLevelId ? 45 : 20;
+    }
+    if (bonusInfiniteMinutes > 0) {
+      this.grantInfiniteHearts(bonusInfiniteMinutes, player, false);
+    }
+
+    // Tiến độ bắt Ếch Sô-cô-la & rớt Thẻ Danh Nhân Phù Thủy (21 thẻ)
     const prevFrogs = player.totalFrogsCleared || 0;
     const safeFrogs = Math.max(0, Math.floor(Number(frogsCleared) || 0));
     player.totalFrogsCleared = prevFrogs + safeFrogs;
 
-    const isBossFirstClear = firstClear && levelId % 10 === 0;
+    const isBossFirstClear = firstClear && isBossStage;
     const crossedFrogMilestone = Math.floor(player.totalFrogsCleared / 40) > Math.floor(prevFrogs / 40);
     const luckyThreeStar = firstClear && stars >= 3 && Math.random() < 0.35;
 
@@ -556,6 +809,10 @@ export class StorageService {
       highScore: Math.max(prev?.highScore || 0, score)
     };
     player.galleons += galleonsEarned;
+
+    const newWand = this.getWandMastery(player);
+    const wandRankUp = newWand.rank > prevWand.rank ? newWand : null;
+
     player.updatedAt = Date.now();
     this.save();
 
@@ -563,6 +820,9 @@ export class StorageService {
       firstClear,
       galleonsEarned,
       bonusBooster,
+      bonusInfiniteMinutes,
+      unlockedNewSeason,
+      wandRankUp,
       newStreak: player.winStreak,
       droppedCard
     };
@@ -689,7 +949,7 @@ export class StorageService {
     return JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
-        version: 3,
+        version: 4,
         state: this.data
       },
       null,
@@ -698,8 +958,8 @@ export class StorageService {
   }
 
   importSaveJSON(rawJson) {
-    if (typeof rawJson !== 'string' || rawJson.length === 0 || rawJson.length > 512 * 1024) {
-      return { ok: false, reason: 'File sao lưu vượt quá giới hạn an toàn (512 KB) hoặc trống.' };
+    if (typeof rawJson !== 'string' || rawJson.length === 0 || rawJson.length > 2.5 * 1024 * 1024) {
+      return { ok: false, reason: 'File sao lưu vượt quá giới hạn an toàn (2.5 MB) hoặc trống.' };
     }
     try {
       const parsed = JSON.parse(rawJson);

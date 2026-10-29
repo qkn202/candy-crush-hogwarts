@@ -239,6 +239,22 @@ class SoundEngine {
     this.playTone(146.83, 'triangle', 0.34, 0.1, 0.06, 82.41);
   }
 
+  playBossEnrage() {
+    this.playTone(130.81, 'sawtooth', 0.42, 0.14, 0, 65.41);
+    this.playTone(277.18, 'sawtooth', 0.36, 0.11, 0.08, 415.3);
+    this.playTone(554.37, 'triangle', 0.38, 0.1, 0.16, 830.61);
+  }
+
+  playMazeShift() {
+    this.playTone(330, 'sine', 0.18, 0.08, 0, 523.25);
+    this.playTone(493.88, 'triangle', 0.16, 0.07, 0.05, 659.25);
+  }
+
+  playHorcruxShatter() {
+    const notes = [220, 440, 659.25, 987.77, 1567.98];
+    notes.forEach((n, i) => this.playTone(n, i < 2 ? 'sawtooth' : 'triangle', 0.26, 0.11, i * 0.045));
+  }
+
   playPatronus() {
     const chord = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];
     chord.forEach((freq, i) => {

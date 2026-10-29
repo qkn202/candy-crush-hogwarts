@@ -44,7 +44,7 @@ export class Match3Engine {
     this.size = 8;
     this.numColors = 5;
     this.house = 'gryffindor';
-    this.collectionBuffs = { scoreBonusPct: 0, patronusBonusPct: 0 };
+    this.collectionBuffs = { scoreBonusPct: 0, patronusBonusPct: 0, bossDamageBonusPct: 0 };
 
     this.mask = [];
     this.jelly = [];
@@ -55,6 +55,16 @@ export class Match3Engine {
     this.cauldronCharge = [];
     this.cauldronStunnedThisTurn = new Set();
     this.lockGrid = [];
+    this.petrify = [];
+    this.dementor = [];
+    this.dementorCharge = [];
+    this.dementorStunnedThisTurn = new Set();
+    this.decree = [];
+    this.fiendfyre = [];
+    this.fiendfyreDamagedThisTurn = false;
+    this.fiendfyreSpreadTurn = 0;
+    this.horcrux = [];
+    this.mazeConfig = null;
     this.conveyorLoops = [];
     this.portals = [];
     this.ingredientSpawnCols = [];
@@ -69,6 +79,9 @@ export class Match3Engine {
     this.bossMaxHp = 0;
     this.bossHp = 0;
     this.bossDefeated = false;
+    this.bossEnraged = false;
+    this.pendingBossEnrageBurst = false;
+    this.bossEffectiveCastInterval = 4;
     this.patronusCharge = 0;
 
     this.grid = [];
@@ -84,6 +97,10 @@ export class Match3Engine {
     this.initialChocolate = 0;
     this.initialCauldronPots = 0;
     this.initialLocks = 0;
+    this.initialPetrify = 0;
+    this.initialDementors = 0;
+    this.initialDecrees = 0;
+    this.initialHorcruxes = 0;
     this.chocolateBrokenThisTurn = false;
     this.lastSwapDir = 'h';
 
@@ -108,6 +125,7 @@ export class Match3Engine {
 
     this.pointerState = null;
     this.rafId = null;
+    this.loopActive = false;
     this.lastFrameTime = performance.now();
 
     this.bindInput();
@@ -117,18 +135,27 @@ export class Match3Engine {
     return (
       (this.frosting[r]?.[c] || 0) > 0 ||
       (this.chocolate[r]?.[c] || 0) > 0 ||
-      (this.cauldron[r]?.[c] || 0) > 0
+      (this.cauldron[r]?.[c] || 0) > 0 ||
+      (this.dementor[r]?.[c] || 0) > 0 ||
+      (this.decree[r]?.[c] || 0) > 0 ||
+      (this.fiendfyre[r]?.[c] || 0) > 0 ||
+      (this.horcrux[r]?.[c] || 0) > 0
     );
   }
 
   isCellLocked(r, c) {
-    return (this.ice[r]?.[c] || 0) > 0 || (this.lockGrid[r]?.[c] || 0) > 0;
+    return (
+      (this.ice[r]?.[c] || 0) > 0 ||
+      (this.lockGrid[r]?.[c] || 0) > 0 ||
+      (this.petrify[r]?.[c] || 0) > 0
+    );
   }
 
   isCellMatchable(r, c) {
     return (
       this.mask[r]?.[c] === 1 &&
       (this.lockGrid[r]?.[c] || 0) === 0 &&
+      (this.petrify[r]?.[c] || 0) === 0 &&
       this.isMatchablePiece(this.grid[r]?.[c])
     );
   }
@@ -143,6 +170,13 @@ export class Match3Engine {
       return;
     }
 
+    if (this.horcrux[cell.r]?.[cell.c] >= 4) {
+      sound.playInvalid();
+      this.spawnPopup(cell.r, cell.c, 'Khiên Hồn! Dùng Kẹo Phép / Hộ Mệnh / Búa!', '#e879f9', 13);
+      this.pointerState = null;
+      return;
+    }
+
     if (this.hasStaticBlocker(cell.r, cell.c)) {
       sound.playInvalid();
       this.spawnPopup(cell.r, cell.c, 'Ghép kẹo cạnh bên để phá!', '#fde047', 13);
@@ -153,6 +187,13 @@ export class Match3Engine {
     if (this.lockGrid[cell.r]?.[cell.c] > 0) {
       sound.playInvalid();
       this.spawnPopup(cell.r, cell.c, 'Cần ghép Chìa Khoá Vàng!', '#fde047', 13);
+      this.pointerState = null;
+      return;
+    }
+
+    if (this.petrify[cell.r]?.[cell.c] > 0) {
+      sound.playInvalid();
+      this.spawnPopup(cell.r, cell.c, 'Hoá Đá Tử Xà! Ghép cạnh bên!', '#6ee7b7', 13);
       this.pointerState = null;
       return;
     }
@@ -337,7 +378,7 @@ export class Match3Engine {
             this.rafId = null;
           }
         } else {
-          if (this.level && !this.ended && !this.rafId) {
+          if (this.loopActive && this.level && !this.ended && !this.rafId) {
             this.startLoop();
           }
         }
@@ -347,9 +388,14 @@ export class Match3Engine {
   }
 
   startLoop() {
+    this.loopActive = true;
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.lastFrameTime = performance.now();
     const tick = (now) => {
+      if (!this.loopActive) {
+        this.rafId = null;
+        return;
+      }
       const dt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
       this.lastFrameTime = now;
       this.update(dt, now);
@@ -363,6 +409,7 @@ export class Match3Engine {
 
   stopLoop() {
     this.sessionId++;
+    this.loopActive = false;
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -379,6 +426,12 @@ export class Match3Engine {
       chocolate: this.chocolate,
       cauldron: this.cauldron,
       lockGrid: this.lockGrid,
+      petrify: this.petrify,
+      dementor: this.dementor,
+      decree: this.decree,
+      fiendfyre: this.fiendfyre,
+      horcrux: this.horcrux,
+      mazeConfig: this.mazeConfig,
       conveyorLoops: this.conveyorLoops,
       portals: this.portals,
       ingredientExitCells: this.ingredientExitCells,
@@ -405,7 +458,8 @@ export class Match3Engine {
     this.house = options.house || 'gryffindor';
     this.collectionBuffs = {
       scoreBonusPct: Number(options.collectionBuffs?.scoreBonusPct) || 0,
-      patronusBonusPct: Number(options.collectionBuffs?.patronusBonusPct) || 0
+      patronusBonusPct: Number(options.collectionBuffs?.patronusBonusPct) || 0,
+      bossDamageBonusPct: Number(options.collectionBuffs?.bossDamageBonusPct) || 0
     };
 
     this.mask = levelData.mask.map((row) => [...row]);
@@ -417,6 +471,21 @@ export class Match3Engine {
     this.cauldronCharge = Array.from({ length: this.size }, () => Array(this.size).fill(0));
     this.cauldronStunnedThisTurn = new Set();
     this.lockGrid = this.cloneGridOrZero(levelData.lockGrid, this.size);
+    this.petrify = this.cloneGridOrZero(levelData.petrifyGrid, this.size);
+    this.dementor = this.cloneGridOrZero(levelData.dementorGrid, this.size);
+    this.dementorCharge = Array.from({ length: this.size }, () => Array(this.size).fill(0));
+    this.dementorStunnedThisTurn = new Set();
+    this.decree = this.cloneGridOrZero(levelData.decreeGrid, this.size);
+    this.fiendfyre = this.cloneGridOrZero(levelData.fiendfyreGrid, this.size);
+    this.fiendfyreDamagedThisTurn = false;
+    this.fiendfyreSpreadTurn = 0;
+    this.horcrux = this.cloneGridOrZero(levelData.horcruxGrid, this.size);
+    this.mazeConfig = levelData.mazeConfig
+      ? {
+          intervalMoves: levelData.mazeConfig.intervalMoves || 3,
+          rows: [...(levelData.mazeConfig.rows || [])]
+        }
+      : null;
     const swirlGrid = this.cloneGridOrZero(levelData.swirlGrid, this.size);
 
     this.conveyorLoops = (levelData.conveyorLoops || []).map((loop) => loop.map((pt) => ({ ...pt })));
@@ -437,6 +506,9 @@ export class Match3Engine {
     this.bossMaxHp = this.bossConfig ? this.bossConfig.maxHp : 0;
     this.bossHp = this.bossMaxHp;
     this.bossDefeated = false;
+    this.bossEnraged = false;
+    this.pendingBossEnrageBurst = false;
+    this.bossEffectiveCastInterval = this.bossConfig ? this.bossConfig.castInterval || 4 : 4;
     this.patronusCharge = this.house === 'hufflepuff' ? 25 : 0;
 
     this.initialJelly = this.countGridSum(this.jelly);
@@ -445,6 +517,10 @@ export class Match3Engine {
     this.initialChocolate = this.countGridSum(this.chocolate);
     this.initialCauldronPots = this.countPositiveCells(this.cauldron);
     this.initialLocks = this.countGridSum(this.lockGrid);
+    this.initialPetrify = this.countGridSum(this.petrify);
+    this.initialDementors = this.countPositiveCells(this.dementor);
+    this.initialDecrees = this.countPositiveCells(this.decree);
+    this.initialHorcruxes = this.countPositiveCells(this.horcrux);
 
     this.score = 0;
     this.movesLeft = levelData.moves;
@@ -542,12 +618,14 @@ export class Match3Engine {
         if (this.hasStaticBlocker(r, c)) {
           this.ice[r][c] = 0;
           this.lockGrid[r][c] = 0;
+          this.petrify[r][c] = 0;
           this.grid[r][c] = null;
           continue;
         }
         if (swirlGrid[r]?.[c] > 0) {
           this.ice[r][c] = 0;
           this.lockGrid[r][c] = 0;
+          this.petrify[r][c] = 0;
           this.grid[r][c] = this.createSwirlPiece(c, r);
           continue;
         }
@@ -760,18 +838,59 @@ export class Match3Engine {
     this.patronusCharge = Math.min(100, Math.round((this.patronusCharge + gained) * 10) / 10);
   }
 
-  damageBoss(rawDamage) {
+  damageBoss(rawDamage, isTrueDamage = false) {
     if (!this.bossConfig || this.bossDefeated || this.bossHp <= 0 || rawDamage <= 0) return;
-    const mult = this.house === 'gryffindor' ? 1.25 : 1;
-    const dmg = Math.max(1, Math.round(rawDamage * mult));
+    let dmg = Math.max(1, Math.round(rawDamage));
+    if (!isTrueDamage) {
+      const houseMult = this.house === 'gryffindor' ? 1.25 : 1;
+      const masteryMult = 1 + (this.collectionBuffs.bossDamageBonusPct || 0) / 100;
+      dmg = Math.max(1, Math.round(rawDamage * houseMult * masteryMult));
+    }
     this.bossHp = Math.max(0, this.bossHp - dmg);
+
+    // Kích hoạt Pha 2 Cuồng Nộ một lần duy nhất khi Đại Trùm tụt xuống ngưỡng máu enrageBelowPct (50%)!
+    const enragePct = this.bossConfig.enrageBelowPct || 0;
+    if (
+      this.bossHp > 0 &&
+      !this.bossEnraged &&
+      enragePct > 0 &&
+      this.bossHp <= this.bossMaxHp * enragePct
+    ) {
+      this.bossEnraged = true;
+      this.bossEffectiveCastInterval = Math.max(2, (this.bossConfig.castInterval || 4) - 1);
+      this.pendingBossEnrageBurst = true;
+    }
+
     if (this.bossHp === 0 && !this.bossDefeated) {
       this.bossDefeated = true;
+      this.pendingBossEnrageBurst = false;
       sound.playColorBomb();
       this.vfx.shake = Math.max(this.vfx.shake, 12);
       this.spawnCenterBanner(`${this.bossConfig.emoji} ĐẠI TRÙM BẠI TRẬN!`);
       this.grantRandomSpecialsOnBoard(['wrapped', Math.random() < 0.5 ? 'striped_h' : 'striped_v']);
     }
+  }
+
+  purgeAllDementorsWithPatronus(originR, originC) {
+    let banished = 0;
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if ((this.dementor[r]?.[c] || 0) > 0) {
+          this.dementor[r][c] = 0;
+          if (this.dementorCharge[r]) this.dementorCharge[r][c] = 0;
+          banished++;
+          this.spawnArc(originR, originC, r, c, '#e0f2fe');
+          this.spawnRing(r, c, 1.5, '#7dd3fc');
+          this.spawnBurst(r, c, '#bae6fd', 14);
+          this.spawnPopup(r, c, 'THANH TẨY!', '#e0f2fe', 14);
+        }
+      }
+    }
+    if (banished > 0) {
+      this.damageBoss(banished * 180);
+      this.addScore(banished * 320, originR, originC, '#bae6fd', true, 'blocker');
+    }
+    return banished;
   }
 
   grantRandomSpecialsOnBoard(specialTypes = []) {
@@ -898,6 +1017,9 @@ export class Match3Engine {
     this.busy = false;
     this.movesLeft += amount;
     this.addExtraTurnsToBombs(amount);
+    if (!this.rafId) {
+      this.startLoop();
+    }
     sound.playColorBomb();
     this.spawnCenterBanner(`+${amount} LƯỢT PHÉP THUẬT!`);
     this.resetIdleHint();
@@ -936,7 +1058,7 @@ export class Match3Engine {
   async executeHammer(r, c) {
     if (this.busy || this.ended) return;
     const piece = this.grid[r][c];
-    if (piece?.isIngredient && this.jelly[r][c] === 0) {
+    if (piece?.isIngredient && this.jelly[r][c] === 0 && !this.isCellLocked(r, c)) {
       sound.playInvalid();
       this.spawnPopup(r, c, 'Bảo vật bất hoại!', '#fde047', 14);
       return;
@@ -945,6 +1067,7 @@ export class Match3Engine {
       !piece &&
       this.jelly[r][c] === 0 &&
       this.ice[r][c] === 0 &&
+      (this.petrify[r]?.[c] || 0) === 0 &&
       !this.hasStaticBlocker(r, c) &&
       (this.lockGrid[r]?.[c] || 0) === 0
     ) {
@@ -999,6 +1122,9 @@ export class Match3Engine {
     const triggered = new Set();
     const mid = Math.floor(this.size / 2);
 
+    // Ánh sáng Thần Hộ Mệnh thanh tẩy tức khắc mọi Giám Ngục Azkaban trên bàn cờ!
+    this.purgeAllDementorsWithPatronus(mid, mid);
+
     if (this.house === 'gryffindor') {
       this.spawnCenterBanner('🦌 EXPECTO PATRONUM: HƯƠU BẠC!');
       let targetR = mid;
@@ -1010,6 +1136,19 @@ export class Match3Engine {
       }
       this.fireRowBeam(targetR, targetC, 0.86, '#f8fafc', triggered, false);
       this.fireColBeam(targetC, targetR, 0.86, '#fde047', triggered, false);
+      // Hươu Bạc phóng thêm tia sáng xuyên thẳng 1 Khiên Linh Giá nếu còn trên bàn
+      for (let r = 0; r < this.size; r++) {
+        let pierced = false;
+        for (let c = 0; c < this.size; c++) {
+          if ((this.horcrux[r]?.[c] || 0) >= 4 && !triggered.has(`hx:${r},${c}`)) {
+            this.spawnArc(targetR, targetC, r, c, '#fde047');
+            this.damageCell(r, c, triggered, true, true);
+            pierced = true;
+            break;
+          }
+        }
+        if (pierced) break;
+      }
       this.damageBoss(450);
       this.addScore(650, targetR, targetC, '#fde047', true, 'special');
       this.grantRandomSpecialsOnBoard(['wrapped', Math.random() < 0.5 ? 'striped_h' : 'striped_v']);
@@ -1020,8 +1159,12 @@ export class Match3Engine {
         for (let c = 0; c < this.size; c++) {
           if (this.mask[r][c] === 0) continue;
           let prio = 0;
-          if (this.cauldron[r][c] > 0) prio = 95;
+          if ((this.horcrux[r]?.[c] || 0) > 0) prio = 115;
+          else if ((this.fiendfyre[r]?.[c] || 0) > 0) prio = 108;
+          else if ((this.decree[r]?.[c] || 0) > 0) prio = 102;
+          else if (this.cauldron[r][c] > 0) prio = 95;
           else if (this.chocolate[r][c] > 0) prio = 90;
+          else if ((this.petrify[r]?.[c] || 0) > 0) prio = 88;
           else if (this.lockGrid[r]?.[c] > 0) prio = 85;
           else if (this.frosting[r][c] > 0) prio = 80;
           else if (this.ice[r][c] > 0) prio = 75;
@@ -1052,10 +1195,22 @@ export class Match3Engine {
       this.damageBoss(360);
       this.addScore(600, mid, mid, '#7dd3fc', true, 'special');
     } else {
-      // Hufflepuff: Lửng Vàng Kiên Định
+      // Hufflepuff: Lửng Vàng Kiên Định (cũng cộng sát thương xuyên 1 Khiên Linh Giá nếu có)
       this.spawnCenterBanner('🦡 EXPECTO PATRONUM: LỬNG VÀNG!');
       this.movesLeft += 2;
       this.addExtraTurnsToBombs(2);
+      for (let r = 0; r < this.size; r++) {
+        let pierced = false;
+        for (let c = 0; c < this.size; c++) {
+          if ((this.horcrux[r]?.[c] || 0) >= 4) {
+            this.spawnArc(mid, mid, r, c, '#fde047');
+            this.damageCell(r, c, triggered, true, true);
+            pierced = true;
+            break;
+          }
+        }
+        if (pierced) break;
+      }
       this.grantRandomSpecialsOnBoard([
         'wrapped',
         Math.random() < 0.5 ? 'striped_h' : 'striped_v',
@@ -1092,6 +1247,11 @@ export class Match3Engine {
       this.spawnPopup(b.r, b.c, 'Cần Chìa Khoá Vàng!', '#fde047', 14);
       return;
     }
+    if ((this.petrify[a.r]?.[a.c] || 0) > 0 || (this.petrify[b.r]?.[b.c] || 0) > 0) {
+      sound.playInvalid();
+      this.spawnPopup(b.r, b.c, 'Đang Hoá Đá Tử Xà!', '#6ee7b7', 14);
+      return;
+    }
     if (this.ice[a.r][a.c] > 0 || this.ice[b.r][b.c] > 0) {
       sound.playInvalid();
       this.spawnPopup(b.r, b.c, 'Ô bị đóng băng!', '#7dd3fc', 14);
@@ -1126,7 +1286,9 @@ export class Match3Engine {
     }
 
     this.chocolateBrokenThisTurn = false;
+    this.fiendfyreDamagedThisTurn = false;
     this.cauldronStunnedThisTurn.clear();
+    this.dementorStunnedThisTurn.clear();
     if (isFreeSwapBooster) {
       this.cb.onBoosterConsumed?.('swap');
       this.activeBooster = null;
@@ -1318,7 +1480,13 @@ export class Match3Engine {
       const targets = [];
       for (let r = 0; r < this.size; r++) {
         for (let c = 0; c < this.size; c++) {
-          if (this.mask[r][c] === 0 || (this.lockGrid[r]?.[c] || 0) > 0) continue;
+          if (
+            this.mask[r][c] === 0 ||
+            (this.lockGrid[r]?.[c] || 0) > 0 ||
+            (this.petrify[r]?.[c] || 0) > 0
+          ) {
+            continue;
+          }
           const p = this.grid[r][c];
           if (p && this.isMatchablePiece(p) && p.color === targetColor) {
             targets.push({ r, c });
@@ -1334,7 +1502,7 @@ export class Match3Engine {
         this.consumeSwappedPiece(otherPos, triggered);
         for (const t of targets) {
           const piece = this.grid[t.r][t.c];
-          if (piece) {
+          if (piece && !this.isCellLocked(t.r, t.c)) {
             piece.special = 'seeker';
             piece.scale = 1.25;
           }
@@ -1358,7 +1526,7 @@ export class Match3Engine {
 
         for (const t of targets) {
           const piece = this.grid[t.r][t.c];
-          if (!piece) continue;
+          if (!piece || this.isCellLocked(t.r, t.c)) continue;
           if (otherSpecial === 'wrapped') {
             piece.special = 'wrapped';
           } else {
@@ -1788,6 +1956,135 @@ export class Match3Engine {
     }
   }
 
+  isSuppressedByDecree(r, c) {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if ((this.decree[r + dr]?.[c + dc] || 0) > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  hitPetrifyAt(r, c) {
+    if ((this.petrify[r]?.[c] || 0) <= 0) return false;
+    this.petrify[r][c]--;
+    this.addPatronusCharge(5);
+    sound.playIceBreak();
+    this.spawnBurst(r, c, '#94a3b8', 11);
+    if (this.petrify[r][c] <= 0) {
+      this.petrify[r][c] = 0;
+      this.spawnPopup(r, c, 'GIẢI HOÁ ĐÁ!', '#6ee7b7', 13);
+      this.addScore(130, r, c, '#a7f3d0', false, 'blocker');
+      this.damageBoss(55);
+    } else {
+      this.addScore(80, r, c, '#cbd5e1', false, 'blocker');
+      this.damageBoss(30);
+    }
+    return true;
+  }
+
+  hitDementorAt(r, c) {
+    if ((this.dementor[r]?.[c] || 0) <= 0) return false;
+    this.dementor[r][c]--;
+    this.dementorStunnedThisTurn.add(`${r},${c}`);
+    this.dementorCharge[r][c] = 0;
+    this.addPatronusCharge(8);
+    if (this.dementor[r][c] <= 0) {
+      this.dementor[r][c] = 0;
+      sound.playBomb();
+      this.spawnRing(r, c, 1.5, '#7dd3fc');
+      this.spawnBurst(r, c, '#bae6fd', 16);
+      this.spawnPopup(r, c, 'TRỤC XUẤT GIÁM NGỤC!', '#e0f2fe', 14);
+      this.addScore(260, r, c, '#bae6fd', false, 'blocker');
+      this.damageBoss(165);
+    } else {
+      sound.playIceBreak();
+      this.spawnBurst(r, c, '#38bdf8', 10);
+      this.addScore(105, r, c, '#7dd3fc', false, 'blocker');
+      this.damageBoss(50);
+    }
+    return true;
+  }
+
+  hitDecreeAt(r, c) {
+    if ((this.decree[r]?.[c] || 0) <= 0) return false;
+    this.decree[r][c]--;
+    this.addPatronusCharge(6);
+    if (this.decree[r][c] <= 0) {
+      this.decree[r][c] = 0;
+      sound.playBomb();
+      this.spawnRing(r, c, 1.45, '#f472b6');
+      this.spawnBurst(r, c, '#f9a8d4', 16);
+      this.spawnPopup(r, c, 'BỂ SẮC LỆNH!', '#fbcfe8', 14);
+      this.addScore(240, r, c, '#f9a8d4', false, 'blocker');
+      this.damageBoss(150);
+    } else {
+      sound.playIceBreak();
+      this.spawnBurst(r, c, '#ec4899', 10);
+      this.addScore(100, r, c, '#fbcfe8', false, 'blocker');
+      this.damageBoss(45);
+    }
+    return true;
+  }
+
+  hitFiendfyreAt(r, c) {
+    if ((this.fiendfyre[r]?.[c] || 0) <= 0) return false;
+    this.fiendfyre[r][c]--;
+    this.fiendfyreDamagedThisTurn = true;
+    this.addPatronusCharge(6);
+    if (this.fiendfyre[r][c] <= 0) {
+      this.fiendfyre[r][c] = 0;
+      sound.playBomb();
+      this.spawnRing(r, c, 1.4, '#fb923c');
+      this.spawnBurst(r, c, '#f97316', 14);
+      this.spawnPopup(r, c, 'DẬP LỬA ĐỊA NGỤC!', '#fed7aa', 14);
+      this.addScore(200, r, c, '#fdba74', false, 'blocker');
+      this.damageBoss(110);
+    } else {
+      sound.playIceBreak();
+      this.spawnBurst(r, c, '#ef4444', 9);
+      this.addScore(95, r, c, '#fca5a5', false, 'blocker');
+      this.damageBoss(40);
+    }
+    return true;
+  }
+
+  hitHorcruxAt(r, c, pierceShield = false) {
+    if ((this.horcrux[r]?.[c] || 0) <= 0) return false;
+    if (this.horcrux[r][c] >= 4 && !pierceShield) {
+      sound.playInvalid();
+      this.spawnBurst(r, c, '#c084fc', 6);
+      this.spawnPopup(r, c, '🛡️ KHIÊN HỒN!', '#e9d5ff', 13);
+      return false;
+    }
+    const wasShielded = this.horcrux[r][c] >= 4;
+    this.horcrux[r][c]--;
+    this.addPatronusCharge(9);
+    if (this.horcrux[r][c] <= 0) {
+      this.horcrux[r][c] = 0;
+      sound.playHorcruxShatter();
+      this.vfx.shake = Math.max(this.vfx.shake, 11);
+      this.spawnRing(r, c, 2.1, '#10b981');
+      this.spawnBurst(r, c, '#a855f7', 22);
+      this.spawnPopup(r, c, '💀 DIỆT LINH GIÁ! -600 HP', '#6ee7b7', 16);
+      this.addScore(520, r, c, '#6ee7b7', false, 'blocker');
+      this.damageBoss(600, true);
+    } else if (wasShielded && this.horcrux[r][c] === 3) {
+      sound.playIceBreak();
+      this.spawnRing(r, c, 1.35, '#c084fc');
+      this.spawnBurst(r, c, '#e879f9', 14);
+      this.spawnPopup(r, c, 'VỠ KHIÊN HỒN!', '#f5d0fe', 14);
+      this.addScore(180, r, c, '#f5d0fe', false, 'blocker');
+      this.damageBoss(90);
+    } else {
+      sound.playIceBreak();
+      this.spawnBurst(r, c, '#34d399', 11);
+      this.addScore(140, r, c, '#a7f3d0', false, 'blocker');
+      this.damageBoss(75);
+    }
+    return true;
+  }
+
   hitCauldronAt(r, c) {
     if ((this.cauldron[r]?.[c] || 0) <= 0) return;
     this.cauldron[r][c]--;
@@ -1810,7 +2107,7 @@ export class Match3Engine {
     }
   }
 
-  // Phá Đá Cổ Ngữ, Sô-cô-la Lan, Vạc Độc Dược & Xoáy Cam Thảo nằm sát cạnh cụm kẹo vừa ghép
+  // Phá Chướng Ngại Vật nằm sát cạnh cụm kẹo vừa ghép (kể cả cơ chế Năm 2–7)
   damageAdjacentBlockers(clusterCells, blockerHitSet) {
     const dirs = [
       [-1, 0],
@@ -1826,7 +2123,19 @@ export class Match3Engine {
         const key = `${nr},${nc}`;
         if (blockerHitSet.has(key)) continue;
 
-        if (this.cauldron[nr]?.[nc] > 0) {
+        if ((this.horcrux[nr]?.[nc] || 0) > 0) {
+          blockerHitSet.add(key);
+          this.hitHorcruxAt(nr, nc, false);
+        } else if ((this.dementor[nr]?.[nc] || 0) > 0) {
+          blockerHitSet.add(key);
+          this.hitDementorAt(nr, nc);
+        } else if ((this.decree[nr]?.[nc] || 0) > 0) {
+          blockerHitSet.add(key);
+          this.hitDecreeAt(nr, nc);
+        } else if ((this.fiendfyre[nr]?.[nc] || 0) > 0) {
+          blockerHitSet.add(key);
+          this.hitFiendfyreAt(nr, nc);
+        } else if (this.cauldron[nr]?.[nc] > 0) {
           blockerHitSet.add(key);
           this.hitCauldronAt(nr, nc);
         } else if (this.frosting[nr][nc] > 0) {
@@ -1846,6 +2155,9 @@ export class Match3Engine {
           sound.playIceBreak();
           this.spawnBurst(nr, nc, '#a16207', 11);
           this.addScore(120, nr, nc, '#fbbf24', false, 'blocker');
+        } else if ((this.petrify[nr]?.[nc] || 0) > 0) {
+          blockerHitSet.add(key);
+          this.hitPetrifyAt(nr, nc);
         } else if (this.grid[nr][nc]?.blocker === 'swirl' && (this.lockGrid[nr]?.[nc] || 0) === 0) {
           blockerHitSet.add(key);
           this.grid[nr][nc] = null;
@@ -1872,43 +2184,55 @@ export class Match3Engine {
     const triggered = new Set();
     const adjacentBlockerHits = new Set();
     const pendingSpawns = [];
+    let decreeWarnedThisWave = false;
 
     for (const cluster of clusters) {
       let spawnCell = null;
+      let suppressedByDecree = false;
       if (cluster.spawnSpecial) {
-        this.addPatronusCharge(7);
-        for (const anchor of preferredAnchors) {
-          const found = cluster.cells.find(
-            (ce) => ce.r === anchor.r && ce.c === anchor.c && !this.isCellLocked(ce.r, ce.c)
-          );
-          if (found) {
-            spawnCell = found;
-            break;
+        suppressedByDecree = cluster.cells.some((ce) => this.isSuppressedByDecree(ce.r, ce.c));
+        if (suppressedByDecree) {
+          if (!decreeWarnedThisWave) {
+            decreeWarnedThisWave = true;
+            const mid = cluster.cells[Math.floor(cluster.cells.length / 2)];
+            this.spawnPopup(mid.r, mid.c, '📜 CẤM KẾT TINH PHÉP!', '#fbcfe8', 15);
           }
+        } else {
+          this.addPatronusCharge(7);
+          for (const anchor of preferredAnchors) {
+            const found = cluster.cells.find(
+              (ce) => ce.r === anchor.r && ce.c === anchor.c && !this.isCellLocked(ce.r, ce.c)
+            );
+            if (found) {
+              spawnCell = found;
+              break;
+            }
+          }
+          if (!spawnCell) {
+            const intersection = cluster.cells.find((ce) => ce.count > 1 && !this.isCellLocked(ce.r, ce.c));
+            spawnCell = intersection || cluster.cells.find((ce) => !this.isCellLocked(ce.r, ce.c)) || cluster.cells[0];
+          }
+          pendingSpawns.push({
+            r: spawnCell.r,
+            c: spawnCell.c,
+            color: cluster.color,
+            special: cluster.spawnSpecial
+          });
         }
-        if (!spawnCell) {
-          const intersection = cluster.cells.find((ce) => ce.count > 1 && !this.isCellLocked(ce.r, ce.c));
-          spawnCell = intersection || cluster.cells.find((ce) => !this.isCellLocked(ce.r, ce.c)) || cluster.cells[0];
-        }
-        pendingSpawns.push({
-          r: spawnCell.r,
-          c: spawnCell.c,
-          color: cluster.color,
-          special: cluster.spawnSpecial
-        });
       }
 
-      // Phá các ô Chướng Ngại Vật nằm kề bên cụm ghép (Vạc Độc Dược, Đá Cổ Ngữ, Sô-cô-la, Xoáy Cam Thảo)
+      // Phá các ô Chướng Ngại Vật nằm kề bên cụm ghép (Học Kỳ Năm 1–7)
       this.damageAdjacentBlockers(cluster.cells, adjacentBlockerHits);
 
       for (const cell of cluster.cells) {
         this.damageCell(cell.r, cell.c, triggered, false);
       }
 
+      const spawnedSpecialBonus = cluster.spawnSpecial && !suppressedByDecree;
       this.addPatronusCharge(cluster.cells.length * 2.8);
-      this.damageBoss((cluster.cells.length * 28 + (cluster.spawnSpecial ? 95 : 0)) * comboStep);
+      this.damageBoss((cluster.cells.length * 28 + (spawnedSpecialBonus ? 95 : 0)) * comboStep);
 
-      const pts = cluster.cells.length * 60 * comboStep + (cluster.spawnSpecial ? 220 : 0);
+      const pts = cluster.cells.length * 60 * comboStep + (spawnedSpecialBonus ? 220 : 0);
       const midCell = cluster.cells[Math.floor(cluster.cells.length / 2)];
       this.addScore(pts, midCell.r, midCell.c, TILE_TYPES[cluster.color]?.light || '#fde047', true, 'match');
     }
@@ -1930,7 +2254,47 @@ export class Match3Engine {
   damageCell(r, c, triggeredSet, fromSpecialBlast = false, bypassLock = false) {
     if (!this.isValidCell(r, c) || this.mask[r][c] === 0) return;
 
-    // 0. Vạc Độc Dược (Magic Cauldron 1–3 HP)
+    // 0a. Trường Sinh Linh Giá (Năm 7 — Khiên Hồn >= 4 HP chỉ xuyên thủng bằng Kẹo Phép / Thần Hộ Mệnh / Búa!)
+    if ((this.horcrux[r]?.[c] || 0) > 0) {
+      const hxKey = `hx:${r},${c}`;
+      if (!triggeredSet.has(hxKey)) {
+        triggeredSet.add(hxKey);
+        this.hitHorcruxAt(r, c, fromSpecialBlast || bypassLock);
+      }
+      return;
+    }
+
+    // 0b. Giám Ngục Azkaban (Năm 3 — 2..4 HP)
+    if ((this.dementor[r]?.[c] || 0) > 0) {
+      const dmKey = `dm:${r},${c}`;
+      if (!triggeredSet.has(dmKey)) {
+        triggeredSet.add(dmKey);
+        this.hitDementorAt(r, c);
+      }
+      return;
+    }
+
+    // 0c. Bia Sắc Lệnh Umbridge (Năm 5 — 2..4 HP)
+    if ((this.decree[r]?.[c] || 0) > 0) {
+      const dcKey = `dc:${r},${c}`;
+      if (!triggeredSet.has(dcKey)) {
+        triggeredSet.add(dcKey);
+        this.hitDecreeAt(r, c);
+      }
+      return;
+    }
+
+    // 0d. Lửa Địa Ngục Fiendfyre (Năm 6 — 2 HP)
+    if ((this.fiendfyre[r]?.[c] || 0) > 0) {
+      const ffKey = `ff:${r},${c}`;
+      if (!triggeredSet.has(ffKey)) {
+        triggeredSet.add(ffKey);
+        this.hitFiendfyreAt(r, c);
+      }
+      return;
+    }
+
+    // 0e. Vạc Độc Dược (Magic Cauldron 1–3 HP)
     if (this.cauldron[r]?.[c] > 0) {
       const caKey = `ca:${r},${c}`;
       if (!triggeredSet.has(caKey)) {
@@ -1940,7 +2304,7 @@ export class Match3Engine {
       return;
     }
 
-    // 1. Đá Cổ Ngữ (Frosting 1–3 lớp)
+    // 1. Đá Cổ Ngữ (Frosting 1–5 lớp)
     if (this.frosting[r][c] > 0) {
       const fKey = `fr:${r},${c}`;
       if (!triggeredSet.has(fKey)) {
@@ -1990,7 +2354,17 @@ export class Match3Engine {
       return;
     }
 
-    // 3. Khung Băng Đường Azkaban (Ice 1–2 lớp)
+    // 2c. Tượng Hoá Đá Tử Xà (Năm 2 — 1..3 lớp hoá đá bảo vệ viên kẹo bên trong!)
+    if ((this.petrify[r]?.[c] || 0) > 0) {
+      const ptKey = `pt:${r},${c}`;
+      if (!triggeredSet.has(ptKey)) {
+        triggeredSet.add(ptKey);
+        this.hitPetrifyAt(r, c);
+      }
+      return;
+    }
+
+    // 3. Khung Băng Đường Azkaban (Ice 1–5 lớp)
     if (this.ice[r][c] > 0) {
       const iKey = `ic:${r},${c}`;
       if (!triggeredSet.has(iKey)) {
@@ -2199,7 +2573,7 @@ export class Match3Engine {
     this.vfx.beams.push({ dir: 'v', r: originR, c, rStart, rEnd, widthFactor, color, life: 0.28, maxLife: 0.28 });
   }
 
-  // Trí tuệ chọn mục tiêu thông minh của Kẹo Cánh Vàng Tầm Thủ (ưu tiên Bom -> Chìa Khoá -> Vạc -> Chướng ngại vật -> Kẹo Mục Tiêu)
+  // Trí tuệ chọn mục tiêu thông minh của Kẹo Cánh Vàng Tầm Thủ (ưu tiên Bom -> Linh Giá -> Lửa Fiendfyre -> Chìa Khoá -> Giám Ngục -> Vạc -> Chướng ngại vật -> Kẹo Mục Tiêu)
   pickBestSeekerTargets(count = 1, excludeSet = new Set()) {
     const neededColors = new Set();
     let needJelly = false;
@@ -2207,6 +2581,11 @@ export class Match3Engine {
     let needIce = false;
     let needChoco = false;
     let needCauldron = false;
+    let needPetrify = false;
+    let needDementor = false;
+    let needDecree = false;
+    let needFiendfyre = false;
+    let needHorcrux = false;
     const remLocks = this.countGridSum(this.lockGrid);
 
     for (const obj of this.getObjectivesProgress()) {
@@ -2217,6 +2596,11 @@ export class Match3Engine {
       if (obj.type === 'ice') needIce = true;
       if (obj.type === 'chocolate') needChoco = true;
       if (obj.type === 'cauldron') needCauldron = true;
+      if (obj.type === 'petrify') needPetrify = true;
+      if (obj.type === 'dementor') needDementor = true;
+      if (obj.type === 'decree') needDecree = true;
+      if (obj.type === 'fiendfyre') needFiendfyre = true;
+      if (obj.type === 'horcrux') needHorcrux = true;
     }
 
     const candidates = [];
@@ -2232,12 +2616,22 @@ export class Match3Engine {
         let priority = Math.random() * 25;
         if (p?.bombTimer !== null && p?.bombTimer !== undefined) {
           priority += 1200 + Math.max(0, 20 - p.bombTimer) * 25;
+        } else if ((this.horcrux[r]?.[c] || 0) > 0) {
+          priority += (this.horcrux[r][c] >= 4 ? 1140 : 1060) + (needHorcrux ? 80 : 0);
+        } else if ((this.fiendfyre[r]?.[c] || 0) > 0) {
+          priority += needFiendfyre ? 1040 : 930;
         } else if (remLocks > 0 && p?.hasKey) {
           priority += 980;
+        } else if ((this.dementor[r]?.[c] || 0) > 0) {
+          priority += needDementor ? 970 : 870;
         } else if (this.cauldron[r]?.[c] > 0) {
           priority += needCauldron ? 950 : 810;
+        } else if ((this.decree[r]?.[c] || 0) > 0) {
+          priority += needDecree ? 940 : 820;
         } else if (this.chocolate[r][c] > 0) {
           priority += needChoco ? 920 : 760;
+        } else if ((this.petrify[r]?.[c] || 0) > 0) {
+          priority += needPetrify ? 900 : 720;
         } else if (this.frosting[r][c] > 0) {
           priority += needFrosting ? 880 : 620;
         } else if (this.ice[r][c] > 0) {
@@ -2369,12 +2763,13 @@ export class Match3Engine {
   async applyGravityAndRefill(session = this.sessionId) {
     if (session !== this.sessionId) return;
 
-    // Đảm bảo không có ô rỗng nào bị kẹt trạng thái ice > 0 hoặc lockGrid > 0
+    // Đảm bảo không có ô rỗng nào bị kẹt trạng thái ice > 0, lockGrid > 0 hoặc petrify > 0
     for (let r = 0; r < this.size; r++) {
       for (let c = 0; c < this.size; c++) {
         if (!this.grid[r][c]) {
           if (this.ice[r][c] > 0) this.ice[r][c] = 0;
           if ((this.lockGrid[r]?.[c] || 0) > 0) this.lockGrid[r][c] = 0;
+          if ((this.petrify[r]?.[c] || 0) > 0) this.petrify[r][c] = 0;
         }
       }
     }
@@ -2829,26 +3224,42 @@ export class Match3Engine {
       }
     }
 
-    // Bảo hiểm chống kẹt bàn cờ tuyệt đối
-    for (let r = 0; r < this.size; r++) {
-      for (let c = 0; c < this.size; c++) {
-        const p = this.grid[r][c];
-        if (!p || p.isIngredient || p.blocker || this.mask[r][c] === 0 || this.isCellLocked(r, c)) continue;
-        for (const [dr, dc] of dirs) {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (!this.isValidCell(nr, nc) || this.mask[nr][nc] === 0) continue;
-          this.chocolate[nr][nc] = 0;
-          this.frosting[nr][nc] = 0;
-          this.cauldron[nr][nc] = 0;
-          this.ice[nr][nc] = 0;
-          this.lockGrid[nr][nc] = 0;
-          if (!this.grid[nr][nc]) {
-            this.grid[nr][nc] = this.createPiece(Math.floor(Math.random() * this.numColors), nc, nr);
+    // Bảo hiểm chống kẹt bàn cờ tuyệt đối (ưu tiên mở ô không chứa vật thể mục tiêu cố định)
+    for (const allowBossRelics of [false, true]) {
+      for (let r = 0; r < this.size; r++) {
+        for (let c = 0; c < this.size; c++) {
+          const p = this.grid[r][c];
+          if (!p || p.isIngredient || p.blocker || this.mask[r][c] === 0 || this.isCellLocked(r, c)) continue;
+          for (const [dr, dc] of dirs) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (!this.isValidCell(nr, nc) || this.mask[nr][nc] === 0) continue;
+            if (
+              !allowBossRelics &&
+              ((this.horcrux[nr]?.[nc] || 0) > 0 ||
+                (this.dementor[nr]?.[nc] || 0) > 0 ||
+                (this.decree[nr]?.[nc] || 0) > 0 ||
+                (this.cauldron[nr]?.[nc] || 0) > 0)
+            ) {
+              continue;
+            }
+            this.chocolate[nr][nc] = 0;
+            this.frosting[nr][nc] = 0;
+            this.cauldron[nr][nc] = 0;
+            this.dementor[nr][nc] = 0;
+            this.decree[nr][nc] = 0;
+            this.fiendfyre[nr][nc] = 0;
+            this.horcrux[nr][nc] = 0;
+            this.ice[nr][nc] = 0;
+            this.lockGrid[nr][nc] = 0;
+            this.petrify[nr][nc] = 0;
+            if (!this.grid[nr][nc]) {
+              this.grid[nr][nc] = this.createPiece(Math.floor(Math.random() * this.numColors), nc, nr);
+            }
+            if (p.color < 0) p.color = 0;
+            p.special = 'seeker';
+            return;
           }
-          if (p.color < 0) p.color = 0;
-          p.special = 'seeker';
-          return;
         }
       }
     }
@@ -2973,10 +3384,219 @@ export class Match3Engine {
     return brewed;
   }
 
-  // Đại Trùm phản đòn ếm Bùa Chú Hắc Ám mỗi castInterval lượt khi còn máu
-  castBossHex() {
+  // Năm 3 — Giám Ngục Azkaban hút Thanh Nộ Thần Hộ Mệnh và phả băng giá sau 3 lượt không bị đánh choáng
+  tickDementors() {
+    let activeUnstunned = 0;
+    let firstPos = null;
+    let chilled = false;
+
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if ((this.dementor[r]?.[c] || 0) <= 0) continue;
+        if (this.dementorStunnedThisTurn.has(`${r},${c}`)) continue;
+
+        activeUnstunned++;
+        if (!firstPos) firstPos = { r, c };
+
+        this.dementorCharge[r][c] = (this.dementorCharge[r][c] || 0) + 1;
+        if (this.dementorCharge[r][c] < 3) continue;
+        this.dementorCharge[r][c] = 0;
+
+        const candidates = [];
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const dist = Math.abs(dr) + Math.abs(dc);
+            if (dist === 0 || dist > 2) continue;
+            const nr = r + dr;
+            const nc = c + dc;
+            if (!this.isValidCell(nr, nc) || this.mask[nr][nc] === 0) continue;
+            if (nr === 0 || this.isExitCell(nr, nc) || this.isPortalCell(nr, nc) || this.isConveyorCell(nr, nc)) continue;
+            if (this.hasStaticBlocker(nr, nc) || this.isCellLocked(nr, nc)) continue;
+            const p = this.grid[nr][nc];
+            if (!p || !this.isMatchablePiece(p) || p.special || p.bombTimer !== null || p.hasKey) continue;
+            candidates.push({ r: nr, c: nc, dist });
+          }
+        }
+        if (candidates.length === 0) continue;
+        candidates.sort((a, b) => a.dist - b.dist || Math.random() - 0.5);
+        const pick = candidates[0];
+        this.ice[pick.r][pick.c] = Math.min(5, (this.ice[pick.r][pick.c] || 0) + 1);
+        chilled = true;
+        this.spawnArc(r, c, pick.r, pick.c, '#38bdf8');
+        this.spawnBurst(pick.r, pick.c, '#bae6fd', 10);
+        this.spawnPopup(pick.r, pick.c, 'Hơi lạnh Azkaban!', '#bae6fd', 13);
+      }
+    }
+
+    // Chỉ hút Nộ khi 0 < patronusCharge < 100 để Thần Hộ Mệnh đã đầy 100% không bao giờ bị tụt trước khi kịp bấm!
+    if (activeUnstunned > 0 && this.patronusCharge > 0 && this.patronusCharge < 100) {
+      const drain = Math.min(12, activeUnstunned * 5);
+      this.patronusCharge = Math.max(0, Math.round((this.patronusCharge - drain) * 10) / 10);
+      if (firstPos) {
+        this.spawnPopup(firstPos.r, firstPos.c, `👻 HÚT -${drain}% NỘ!`, '#93c5fd', 13);
+      }
+    }
+
+    if (chilled) sound.playIceBreak();
+    return chilled || activeUnstunned > 0;
+  }
+
+  // Năm 6 — Lửa Địa Ngục Fiendfyre nung ngắn ngòi Bom đứng gần (<=2 ô) và lan rộng mỗi 2 lượt nếu không bị dập bớt
+  tickFiendfyre() {
+    const fireCells = [];
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if ((this.fiendfyre[r]?.[c] || 0) > 0) fireCells.push({ r, c });
+      }
+    }
+    if (fireCells.length === 0) return false;
+
+    let acted = false;
+    // 1. Nung nóng các viên Bom Hắc Ám trong bán kính Manhattan <= 2 (giữ kẹp tối thiểu >= 2 trước nhịp trừ thường để luôn còn 1 lượt cảnh báo!)
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        const p = this.grid[r][c];
+        if (!p || p.bombTimer === null || p.bombTimer === undefined || p.bombTimer <= 2) continue;
+        const nearFire = fireCells.find((fc) => Math.abs(fc.r - r) + Math.abs(fc.c - c) <= 2);
+        if (nearFire) {
+          p.bombTimer = Math.max(2, p.bombTimer - 1);
+          acted = true;
+          this.spawnArc(nearFire.r, nearFire.c, r, c, '#f97316');
+          this.spawnPopup(r, c, '🔥 NUNG BOM!', '#fdba74', 13);
+        }
+      }
+    }
+
+    // 2. Lan thêm 1 ngọn Lửa Địa Ngục 2 HP mỗi 2 lượt nếu người chơi không dập bớt lửa trong lượt vừa qua
+    if (!this.fiendfyreDamagedThisTurn && this.movesUsed > 0 && this.movesUsed % 2 === 0) {
+      const dirs = [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ];
+      const candidates = [];
+      const seen = new Set();
+      for (const fc of fireCells) {
+        for (const [dr, dc] of dirs) {
+          const nr = fc.r + dr;
+          const nc = fc.c + dc;
+          if (!this.isValidCell(nr, nc) || this.mask[nr][nc] === 0) continue;
+          if (nr === 0 || this.isExitCell(nr, nc) || this.isPortalCell(nr, nc) || this.isConveyorCell(nr, nc)) continue;
+          if (this.hasStaticBlocker(nr, nc) || this.isCellLocked(nr, nc)) continue;
+          const p = this.grid[nr][nc];
+          if (!p || !this.isMatchablePiece(p) || p.special || p.bombTimer !== null || p.hasKey) continue;
+          const key = `${nr},${nc}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            candidates.push({ r: nr, c: nc, fromR: fc.r, fromC: fc.c });
+          }
+        }
+      }
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        this.grid[pick.r][pick.c] = null;
+        this.fiendfyre[pick.r][pick.c] = 2;
+        acted = true;
+        sound.playChocolateSpread();
+        this.spawnArc(pick.fromR, pick.fromC, pick.r, pick.c, '#f97316');
+        this.spawnBurst(pick.r, pick.c, '#fb923c', 12);
+        this.spawnPopup(pick.r, pick.c, '🔥 Lửa Địa Ngục lan!', '#fed7aa', 14);
+      }
+    }
+
+    return acted;
+  }
+
+  // Năm 4 — Gió Lốc Mê Cung Tam Pháp Thuật cuốn trượt các hàng chỉ định theo chu kỳ lượt
+  async shiftMazeWindRows(session = this.sessionId) {
+    const rows = this.mazeConfig?.rows;
+    const interval = this.mazeConfig?.intervalMoves || 2;
+    if (!Array.isArray(rows) || rows.length === 0) return false;
+    if (this.movesUsed <= 0 || this.movesUsed % interval !== 0) return false;
+
+    const animMoves = [];
+    const cycleNum = Math.floor(this.movesUsed / interval);
+
+    rows.forEach((r, idx) => {
+      if (r < 0 || r >= this.size) return;
+      const movableCols = [];
+      for (let c = 0; c < this.size; c++) {
+        const p = this.grid[r]?.[c];
+        if (
+          this.mask[r]?.[c] === 1 &&
+          !this.hasStaticBlocker(r, c) &&
+          !this.isCellLocked(r, c) &&
+          p &&
+          !p.isIngredient
+        ) {
+          movableCols.push(c);
+        }
+      }
+      if (movableCols.length < 2) return;
+
+      const dir = (idx + cycleNum) % 2 === 0 ? 1 : -1;
+      const snapshot = movableCols.map((c) => this.grid[r][c]);
+      const len = movableCols.length;
+      for (let i = 0; i < len; i++) {
+        const fromC = movableCols[i];
+        const toC = movableCols[(i + dir + len) % len];
+        const piece = snapshot[i];
+        this.grid[r][toC] = piece;
+        if (piece) {
+          piece.x = fromC;
+          piece.y = r;
+          animMoves.push({ piece, fromX: fromC, fromY: r, toX: toC, toY: r });
+        }
+      }
+    });
+
+    if (animMoves.length === 0) return false;
+    sound.playMazeShift();
+    const midRow = rows[Math.floor(rows.length / 2)];
+    this.spawnPopup(midRow, Math.floor(this.size / 2), '🌪️ GIÓ MÊ CUNG!', '#6ee7b7', 15);
+
+    const duration = 155;
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const step = (now) => {
+        if (session !== this.sessionId) {
+          resolve();
+          return;
+        }
+        const t = Math.min(1, (now - start) / duration);
+        const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        for (const m of animMoves) {
+          m.piece.x = m.fromX + (m.toX - m.fromX) * ease;
+          m.piece.y = m.fromY + (m.toY - m.fromY) * ease;
+        }
+        if (t < 1) nextAnimFrame(step);
+        else resolve();
+      };
+      nextAnimFrame(step);
+    });
+
+    if (session !== this.sessionId) return true;
+    for (const m of animMoves) {
+      m.piece.x = m.toX;
+      m.piece.y = m.toY;
+    }
+
+    if (this.extractIngredientsAtExits()) {
+      await this.applyGravityAndRefill(session);
+      if (session !== this.sessionId) return true;
+    }
+    if (this.findMatchClusters().length > 0) {
+      await this.resolveAllCascades(1, session);
+    }
+    return true;
+  }
+
+  // Đại Trùm phản đòn ếm Bùa Chú Hắc Ám (nâng cấp Pha 2 Cuồng Nộ ở ngưỡng <= 50% HP!)
+  castBossHex(forceEnrageBurst = false) {
     if (!this.bossConfig || this.bossDefeated || this.bossHp <= 0) return false;
-    if (this.movesUsed <= 0 || this.movesUsed % this.bossConfig.castInterval !== 0) return false;
+    const interval = this.bossEffectiveCastInterval || this.bossConfig.castInterval || 4;
+    if (!forceEnrageBurst && (this.movesUsed <= 0 || this.movesUsed % interval !== 0)) return false;
 
     const candidates = [];
     for (let r = 2; r <= this.size - 2; r++) {
@@ -2992,28 +3612,50 @@ export class Match3Engine {
     if (candidates.length === 0) return false;
     candidates.sort(() => Math.random() - 0.5);
 
-    const count = this.level.id >= 60 ? 2 : 1;
+    const baseCount = this.level.id >= 60 ? 2 : 1;
+    const count = forceEnrageBurst
+      ? Math.min(candidates.length, (this.level.seasonId || 1) >= 5 ? 3 : 2)
+      : Math.min(candidates.length, this.bossEnraged ? baseCount + 1 : baseCount);
     const chosen = candidates.slice(0, count);
     const midC = Math.floor(this.size / 2);
 
     for (let i = 0; i < chosen.length; i++) {
       const { r, c } = chosen[i];
       const hex = this.bossConfig.hexType;
-      this.spawnArc(0, midC, r, c, '#c084fc');
+      this.spawnArc(0, midC, r, c, forceEnrageBurst ? '#f43f5e' : '#c084fc');
       if (hex === 'chocolate') {
         this.grid[r][c] = null;
         this.chocolate[r][c] = 1;
-      } else if (hex === 'ice' || (hex === 'dark_curse' && i % 2 === 0)) {
-        this.ice[r][c] = 1;
+      } else if (hex === 'petrify') {
+        this.petrify[r][c] = this.bossEnraged ? 2 : 1;
+      } else if (hex === 'fiendfyre') {
+        this.grid[r][c] = null;
+        this.fiendfyre[r][c] = 2;
+      } else if (hex === 'ice') {
+        this.ice[r][c] = this.bossEnraged ? 2 : 1;
+      } else if (hex === 'dark_curse') {
+        if ((this.level.seasonId || 1) >= 2 && i % 3 === 1) {
+          this.petrify[r][c] = this.bossEnraged ? 2 : 1;
+        } else if (i % 2 === 0) {
+          this.ice[r][c] = this.bossEnraged ? 2 : 1;
+        } else {
+          this.grid[r][c] = this.createSwirlPiece(c, r);
+        }
       } else {
         this.grid[r][c] = this.createSwirlPiece(c, r);
       }
-      this.spawnBurst(r, c, '#c084fc', 10);
+      this.spawnBurst(r, c, forceEnrageBurst ? '#fb7185' : '#c084fc', 11);
     }
 
-    sound.playBossHex();
-    this.vfx.shake = Math.max(this.vfx.shake, 6);
-    this.spawnCenterBanner(`${this.bossConfig.emoji} ${this.bossConfig.hexName.toUpperCase()}!`);
+    if (forceEnrageBurst) {
+      sound.playBossEnrage();
+      this.vfx.shake = Math.max(this.vfx.shake, 11);
+      this.spawnCenterBanner(`🔥 ${this.bossConfig.shortTitle.toUpperCase()} CUỒNG NỘ PHA 2!`);
+    } else {
+      sound.playBossHex();
+      this.vfx.shake = Math.max(this.vfx.shake, 6);
+      this.spawnCenterBanner(`${this.bossConfig.emoji} ${this.bossConfig.hexName.toUpperCase()}!`);
+    }
     return true;
   }
 
@@ -3051,11 +3693,41 @@ export class Match3Engine {
     const remChocolate = this.countGridSum(this.chocolate);
     const remCauldrons = this.countPositiveCells(this.cauldron);
     const remLocks = this.countGridSum(this.lockGrid);
+    const remPetrify = this.countGridSum(this.petrify);
+    const remDementors = this.countPositiveCells(this.dementor);
+    const remDecrees = this.countPositiveCells(this.decree);
+    const remFiendfyre = this.countPositiveCells(this.fiendfyre);
+    const remHorcruxes = this.countPositiveCells(this.horcrux);
 
     return this.level.objectives.map((obj) => {
       if (obj.type === 'boss') {
         const dealt = Math.max(0, this.bossMaxHp - this.bossHp);
         return { ...obj, current: dealt, remaining: this.bossHp, completed: this.bossHp <= 0 };
+      }
+      if (obj.type === 'horcrux') {
+        const done = Math.max(0, this.initialHorcruxes - remHorcruxes);
+        return { ...obj, current: done, remaining: remHorcruxes, completed: remHorcruxes === 0 };
+      }
+      if (obj.type === 'dementor') {
+        const done = Math.max(0, this.initialDementors - remDementors);
+        return { ...obj, current: done, remaining: remDementors, completed: remDementors === 0 };
+      }
+      if (obj.type === 'decree') {
+        const done = Math.max(0, this.initialDecrees - remDecrees);
+        return { ...obj, current: done, remaining: remDecrees, completed: remDecrees === 0 };
+      }
+      if (obj.type === 'fiendfyre') {
+        return {
+          ...obj,
+          target: remFiendfyre,
+          current: remFiendfyre === 0 ? 1 : 0,
+          remaining: remFiendfyre,
+          completed: remFiendfyre === 0
+        };
+      }
+      if (obj.type === 'petrify') {
+        const done = Math.max(0, this.initialPetrify - remPetrify);
+        return { ...obj, current: done, remaining: remPetrify, completed: remPetrify === 0 };
       }
       if (obj.type === 'cauldron') {
         const done = Math.max(0, this.initialCauldronPots - remCauldrons);
@@ -3127,7 +3799,7 @@ export class Match3Engine {
       return;
     }
 
-    // 2. Xử lý hiệu ứng cuối lượt: Băng Chuyền -> Sô-cô-la Lan -> Vạc Độc Dược -> Bùa Trùm -> Bom Đếm Ngược
+    // 2. Xử lý hiệu ứng cuối lượt: Băng Chuyền -> Gió Mê Cung -> Sô-cô-la -> Vạc -> Giám Ngục -> Lửa Fiendfyre -> Bùa Trùm -> Bom
     if (consumedPlayerTurn) {
       if (this.conveyorLoops.length > 0) {
         this.busy = true;
@@ -3140,9 +3812,31 @@ export class Match3Engine {
         }
       }
 
+      if (
+        this.mazeConfig?.rows?.length > 0 &&
+        this.movesUsed > 0 &&
+        this.movesUsed % (this.mazeConfig.intervalMoves || 2) === 0
+      ) {
+        this.busy = true;
+        await this.shiftMazeWindRows(session);
+        if (session !== this.sessionId) return;
+        this.busy = false;
+        if (this.areAllObjectivesComplete()) {
+          await this.finishVictorySequence(session);
+          return;
+        }
+      }
+
       this.spreadOneChocolate();
       this.tickCauldrons();
-      this.castBossHex();
+      this.tickDementors();
+      this.tickFiendfyre();
+      if (this.pendingBossEnrageBurst) {
+        this.pendingBossEnrageBurst = false;
+        this.castBossHex(true);
+      } else {
+        this.castBossHex(false);
+      }
       const explodedBomb = this.tickBombsAndCheckExplosion();
       if (this.countGridSum(this.lockGrid) > 0 && this.countKeysOnBoard() === 0) {
         this.ensureSugarKeysOnBoard(1);
@@ -3173,6 +3867,11 @@ export class Match3Engine {
         });
         return;
       }
+    } else if (this.pendingBossEnrageBurst) {
+      this.pendingBossEnrageBurst = false;
+      this.castBossHex(true);
+      this.emitHudState();
+      this.renderer.render(this.getRenderState(), performance.now());
     }
 
     // 3. Kiểm tra Hết Lượt Đi
@@ -3365,9 +4064,10 @@ export class Match3Engine {
 
   emitHudState() {
     if (!this.level) return;
+    const effectiveInterval = this.bossEffectiveCastInterval || this.bossConfig?.castInterval || 4;
     const turnsUntilHex =
       this.bossConfig && !this.bossDefeated && this.bossHp > 0
-        ? this.bossConfig.castInterval - (this.movesUsed % this.bossConfig.castInterval)
+        ? effectiveInterval - (this.movesUsed % effectiveInterval)
         : 0;
     this.cb.onStateChange?.({
       level: this.level,
@@ -3384,6 +4084,8 @@ export class Match3Engine {
             hp: this.bossHp,
             maxHp: this.bossMaxHp,
             defeated: this.bossDefeated,
+            enraged: this.bossEnraged,
+            effectiveCastInterval: effectiveInterval,
             turnsUntilHex
           }
         : null
@@ -3393,6 +4095,17 @@ export class Match3Engine {
   update(dt, now) {
     if (this.vfx.shake > 0) {
       this.vfx.shake = Math.max(0, this.vfx.shake - dt * 28);
+    }
+
+    for (let r = 0; r < this.size; r++) {
+      const row = this.grid[r];
+      if (!row) continue;
+      for (let c = 0; c < this.size; c++) {
+        const piece = row[c];
+        if (piece && piece.scale > 1 && !piece.primedWrapped) {
+          piece.scale = Math.max(1, piece.scale - dt * 1.4);
+        }
+      }
     }
 
     for (let i = this.vfx.particles.length - 1; i >= 0; i--) {

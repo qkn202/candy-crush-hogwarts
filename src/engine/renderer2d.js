@@ -1,4 +1,5 @@
 // Bộ dựng hình Bàn Cờ & Kẹo Phép 3D Bóng Bẩy chuẩn Candy Crush Saga × Thế Giới Phù Thủy Đêm Tối
+// Hỗ trợ Khay 7×7 → 10×10, Vật Cản Đa Lớp (1–5 lớp) & 6 Cơ Chế Hắc Ám Độc Quyền Năm 2–7
 
 import { TILE_TYPES } from '../data/lore.js';
 
@@ -105,7 +106,7 @@ export class BoardRenderer {
       this.bgDirty = true;
     }
     this.boardPx = cssSize;
-    this.padding = Math.max(10, Math.round(cssSize * 0.028));
+    this.padding = Math.max(8, Math.round(cssSize * (gridSize >= 10 ? 0.022 : 0.028)));
     this.cellSize = (cssSize - this.padding * 2) / gridSize;
   }
 
@@ -143,10 +144,8 @@ export class BoardRenderer {
     bCtx.save();
     bCtx.scale(this.dpr, this.dpr);
 
-    // 1. Vẽ nền khay Hắc Thạch viền Vàng Cổ
     this.drawBoardTray(bCtx, size, mask, cs);
 
-    // 2. Vẽ các ô nền bàn cờ
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (mask[r][c] === 0) continue;
@@ -158,7 +157,7 @@ export class BoardRenderer {
         roundRectPath(bCtx, x + 1, y + 1, cs - 2, cs - 2, cs * 0.14);
         bCtx.fill();
 
-        bCtx.lineWidth = 1.2;
+        bCtx.lineWidth = 1.1;
         bCtx.strokeStyle = 'rgba(212, 160, 23, 0.28)';
         bCtx.stroke();
       }
@@ -179,6 +178,12 @@ export class BoardRenderer {
       chocolate = [],
       cauldron = [],
       lockGrid = [],
+      petrify = [],
+      dementor = [],
+      decree = [],
+      fiendfyre = [],
+      horcrux = [],
+      mazeConfig = null,
       conveyorLoops = [],
       portals = [],
       ingredientExitCells = [],
@@ -203,14 +208,30 @@ export class BoardRenderer {
       ctx.translate((Math.random() - 0.5) * vfx.shake, (Math.random() - 0.5) * vfx.shake);
     }
 
-    // 1. Vẽ nền khay Hắc Thạch + ô nền tĩnh từ offscreen cache canvas (siêu nhanh)
+    // 1. Nền khay Hắc Thạch tĩnh từ offscreen cache canvas
     const bgKey = `${size}_${this.boardPx}_${this.dpr}`;
     if (this.bgDirty || this.lastBgKey !== bgKey) {
       this.renderStaticBg(size, mask, cs);
     }
     ctx.drawImage(this.bgCanvas, 0, 0, this.boardPx, this.boardPx);
 
-    // 2. Vẽ các phần tử động: Thạch Hắc Ám (Jelly), Đá Cổ Ngữ (Frosting), Sô-cô-la Lan, Vạc, v.v.
+    // 1b. Tiền tính vùng cấm phép 3×3 của Bia Sắc Lệnh Umbridge (nếu có)
+    let decreeCenters = null;
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if ((decree[r]?.[c] || 0) > 0) {
+          if (!decreeCenters) decreeCenters = [];
+          decreeCenters.push({ r, c });
+        }
+      }
+    }
+
+    // 1c. Vẽ rãnh Gió Lốc Mê Cung Tam Pháp Thuật (Năm 4+) dưới mặt kẹo
+    if (mazeConfig && Array.isArray(mazeConfig.rows) && mazeConfig.rows.length > 0) {
+      this.drawMazeWindPlates(ctx, mazeConfig, mask, size, cs, now);
+    }
+
+    // 2. Vẽ các phần tử mặt sàn & thực thể đứng yên: Thạch (1–5), Đá Cổ Ngữ (1–5), Sô-cô-la, Vạc, Giám Ngục, Bia Sắc Lệnh, Lửa Fiendfyre, Linh Giá
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (mask[r][c] === 0) continue;
@@ -219,6 +240,13 @@ export class BoardRenderer {
 
         if (jelly[r]?.[c] > 0) {
           this.drawCandyJelly(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, jelly[r][c]);
+        }
+
+        if (decreeCenters && !(decree[r]?.[c] > 0)) {
+          const inAura = decreeCenters.some((dc) => Math.abs(dc.r - r) <= 1 && Math.abs(dc.c - c) <= 1);
+          if (inAura) {
+            this.drawDecreeAuraCell(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.14);
+          }
         }
 
         const frostLayer = frosting[r]?.[c] || 0;
@@ -234,6 +262,26 @@ export class BoardRenderer {
         const cauldronHp = cauldron[r]?.[c] || 0;
         if (cauldronHp > 0) {
           this.drawMagicCauldron(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, cauldronHp, now);
+        }
+
+        const dementorHp = dementor[r]?.[c] || 0;
+        if (dementorHp > 0) {
+          this.drawDementorWraith(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, dementorHp, now);
+        }
+
+        const decreeHp = decree[r]?.[c] || 0;
+        if (decreeHp > 0) {
+          this.drawUmbridgeDecreePlaque(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.15, decreeHp, now);
+        }
+
+        const fiendfyreHp = fiendfyre[r]?.[c] || 0;
+        if (fiendfyreHp > 0) {
+          this.drawFiendfyreFlame(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, fiendfyreHp, now);
+        }
+
+        const horcruxHp = horcrux[r]?.[c] || 0;
+        if (horcruxHp > 0) {
+          this.drawHorcruxRelic(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, horcruxHp, now);
         }
 
         if (selected && selected.r === r && selected.c === c) {
@@ -268,7 +316,7 @@ export class BoardRenderer {
       }
     }
 
-    // 2b. Vẽ Băng Chuyền Cầu Thang, Cổng Lò Sưởi Bột Floo (Portals) & Mũi Tên Lối Thoát Bảo Vật (Drop Exits)
+    // 2b. Vẽ Băng Chuyền Cầu Thang, Cổng Bột Floo & Lối Thoát Bảo Vật
     if (conveyorLoops.length > 0) {
       this.drawConveyorPlates(ctx, conveyorLoops, cs, now);
     }
@@ -300,7 +348,7 @@ export class BoardRenderer {
       ctx.setLineDash([]);
     }
 
-    // 3. Vẽ các Viên Kẹo 3D, Hòn Đá Phù Thủy, Xoáy Cam Thảo, Bom Đếm Ngược & Khung Băng
+    // 3. Vẽ Viên Kẹo 3D + Lớp Hoá Đá Tử Xà, Băng Azkaban (1–5) & Ổ Khoá Gringotts
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (mask[r][c] === 0) continue;
@@ -324,7 +372,14 @@ export class BoardRenderer {
           scale *= 1.02 + 0.025 * Math.sin(now * 0.008 + r + c);
         }
 
-        this.drawCandyPiece(ctx, piece, cx, cy, cs * 0.92 * scale, piece.alpha ?? 1, now);
+        const isPetrified = (petrify[r]?.[c] || 0) > 0;
+        this.drawCandyPiece(ctx, piece, cx, cy, cs * 0.92 * scale, isPetrified ? 0.55 : piece.alpha ?? 1, now);
+
+        if (isPetrified) {
+          const x = this.padding + piece.x * cs + 2;
+          const y = this.padding + piece.y * cs + 2;
+          this.drawPetrifiedStoneOverlay(ctx, x, y, cs - 4, cs - 4, cs * 0.16, petrify[r][c]);
+        }
 
         if (ice[r]?.[c] > 0) {
           const x = this.padding + piece.x * cs + 2;
@@ -340,9 +395,31 @@ export class BoardRenderer {
       }
     }
 
-    // 4. Vẽ hiệu ứng Tia Kẹo Nổ, Kẹo Cánh Vàng Tầm Thủ Bay, Cầu Vồng, Mảnh Kẹo & Chữ Khen
+    // 4. Vẽ hiệu ứng Tia Kẹo Nổ, Kẹo Tầm Thủ Bay, Cầu Vồng, Mảnh Kẹo & Chữ Khen
     this.drawVfx(ctx, vfx, cs, size, now);
 
+    ctx.restore();
+  }
+
+  drawLayerBadge(ctx, x, y, w, h, count, bg = '#090d1a', border = '#fde047', textColor = '#fef08a') {
+    if (count < 2) return;
+    const r = Math.max(6.2, Math.min(9.5, w * 0.2));
+    const bx = x + w - r - 1.5;
+    const by = y + r + 1.5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = border;
+    ctx.stroke();
+
+    ctx.font = `900 ${Math.max(8, Math.round(r * 1.18))}px "Fredoka", "Nunito", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = textColor;
+    ctx.fillText(String(count), bx, by + 0.5);
     ctx.restore();
   }
 
@@ -381,17 +458,18 @@ export class BoardRenderer {
     ctx.shadowBlur = 18;
     ctx.shadowOffsetY = 7;
     ctx.fillStyle = '#d4a017';
-    fillConnectedShape(6.2, cs * 0.24);
+    fillConnectedShape(5.8, cs * 0.24);
 
     ctx.shadowColor = 'transparent';
     ctx.fillStyle = '#3b2507';
-    fillConnectedShape(3.6, cs * 0.21);
+    fillConnectedShape(3.4, cs * 0.21);
 
     ctx.fillStyle = '#080b16';
-    fillConnectedShape(1.5, cs * 0.18);
+    fillConnectedShape(1.4, cs * 0.18);
     ctx.restore();
   }
 
+  // Thạch Hắc Ám 1–5 lớp
   drawCandyJelly(ctx, x, y, w, h, rad, layer) {
     ctx.save();
     roundRectPath(ctx, x, y, w, h, rad);
@@ -402,41 +480,43 @@ export class BoardRenderer {
       g.addColorStop(1, 'rgba(139, 92, 246, 0.48)');
       ctx.fillStyle = g;
       ctx.fill();
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.1;
       ctx.strokeStyle = 'rgba(216, 180, 254, 0.78)';
       ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.18, y + h * 0.34);
-      ctx.quadraticCurveTo(x + w * 0.2, y + h * 0.18, x + w * 0.42, y + h * 0.18);
-      ctx.strokeStyle = 'rgba(243, 232, 255, 0.9)';
-      ctx.lineWidth = 2.4;
-      ctx.lineCap = 'round';
+    } else if (layer === 2) {
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, 'rgba(126, 34, 206, 0.80)');
+      g.addColorStop(1, 'rgba(46, 16, 101, 0.86)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = '#e879f9';
       ctx.stroke();
     } else {
-      const g = ctx.createLinearGradient(x, y, x, y + h);
-      g.addColorStop(0, 'rgba(107, 33, 168, 0.80)');
-      g.addColorStop(1, 'rgba(46, 16, 101, 0.85)');
+      // Thạch Hắc Ám Đặc 3–5 lớp (ánh tím hồng/vàng kim đậm dần)
+      const g = ctx.createLinearGradient(x, y, x + w, y + h);
+      g.addColorStop(0, layer >= 4 ? 'rgba(190, 24, 93, 0.88)' : 'rgba(109, 40, 217, 0.88)');
+      g.addColorStop(1, 'rgba(24, 9, 58, 0.94)');
       ctx.fillStyle = g;
       ctx.fill();
       ctx.lineWidth = 3;
-      ctx.strokeStyle = '#e879f9';
+      ctx.strokeStyle = layer >= 5 ? '#fde047' : layer === 4 ? '#f472b6' : '#c084fc';
       ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(x + w * 0.3, y + h * 0.28, w * 0.08, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(250, 232, 255, 0.92)';
-      ctx.fill();
+      this.drawLayerBadge(ctx, x, y, w, h, layer, '#3b0764', '#fde047', '#fef08a');
     }
     ctx.restore();
   }
 
-  // Đá Cổ Ngữ Hogwarts 1–3 lớp (Frosting / Multi-layer Blocker: phá bằng ghép kẹo cạnh bên)
+  // Đá Cổ Ngữ Hogwarts 1–5 lớp
   drawRuneFrosting(ctx, x, y, w, h, rad, layer) {
     ctx.save();
     roundRectPath(ctx, x, y, w, h, rad);
     const g = ctx.createLinearGradient(x, y, x, y + h);
-    if (layer >= 3) {
+    if (layer >= 4) {
+      g.addColorStop(0, layer >= 5 ? '#fef08a' : '#cbd5e1');
+      g.addColorStop(0.5, layer >= 5 ? '#78350f' : '#475569');
+      g.addColorStop(1, '#0f172a');
+    } else if (layer === 3) {
       g.addColorStop(0, '#94a3b8');
       g.addColorStop(0.55, '#475569');
       g.addColorStop(1, '#1e293b');
@@ -451,21 +531,19 @@ export class BoardRenderer {
     ctx.fillStyle = g;
     ctx.fill();
 
-    ctx.lineWidth = layer >= 3 ? 3.2 : 2.2;
-    ctx.strokeStyle = layer >= 3 ? '#fde047' : layer === 2 ? '#cbd5e1' : '#94a3b8';
+    ctx.lineWidth = layer >= 3 ? 3 : 2.2;
+    ctx.strokeStyle = layer >= 4 ? '#fde047' : layer === 3 ? '#facc15' : layer === 2 ? '#cbd5e1' : '#94a3b8';
     ctx.stroke();
 
-    // Khung nổi trong lòng viên đá
     roundRectPath(ctx, x + w * 0.14, y + h * 0.14, w * 0.72, h * 0.72, rad * 0.65);
     ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Cổ ngữ ma thuật phát sáng ở tâm (số vạch biểu thị độ dày 1..3 lớp)
     const cx = x + w / 2;
     const cy = y + h / 2;
     ctx.strokeStyle = layer >= 2 ? '#fde047' : '#e2e8f0';
-    ctx.lineWidth = 2.6;
+    ctx.lineWidth = 2.4;
     ctx.lineCap = 'round';
     ctx.beginPath();
     if (layer >= 3) {
@@ -482,7 +560,6 @@ export class BoardRenderer {
       ctx.moveTo(cx, cy - h * 0.22);
       ctx.lineTo(cx, cy + h * 0.22);
     } else {
-      // Vết nứt chuẩn bị vỡ của lớp cuối
       ctx.moveTo(x + w * 0.2, y + h * 0.25);
       ctx.lineTo(cx, cy);
       ctx.lineTo(x + w * 0.78, y + h * 0.35);
@@ -490,10 +567,14 @@ export class BoardRenderer {
       ctx.lineTo(x + w * 0.38, y + h * 0.8);
     }
     ctx.stroke();
+
+    if (layer >= 3) {
+      this.drawLayerBadge(ctx, x, y, w, h, layer, '#0f172a', '#fde047', '#fef08a');
+    }
     ctx.restore();
   }
 
-  // Sô-cô-la Hắc Ám Tự Lan (Spreading Chocolate)
+  // Sô-cô-la Hắc Ám Tự Lan
   drawSpreadingChocolate(ctx, x, y, w, h, rad, now) {
     ctx.save();
     roundRectPath(ctx, x, y, w, h, rad);
@@ -509,7 +590,6 @@ export class BoardRenderer {
     ctx.strokeStyle = `rgba(245, 158, 11, ${pulse})`;
     ctx.stroke();
 
-    // 4 ô thanh sô-cô-la dập nổi bóng bẩy
     const pad = w * 0.15;
     const sq = (w - pad * 2.5) / 2;
     const positions = [
@@ -518,7 +598,7 @@ export class BoardRenderer {
       [x + pad, y + pad * 1.5 + sq],
       [x + pad * 1.5 + sq, y + pad * 1.5 + sq]
     ];
-    for (const [ sx, sy ] of positions) {
+    for (const [sx, sy] of positions) {
       roundRectPath(ctx, sx, sy, sq, sq, 3.5);
       ctx.fillStyle = '#4e210c';
       ctx.fill();
@@ -527,11 +607,292 @@ export class BoardRenderer {
       ctx.stroke();
     }
 
-    // Ánh tím hắc ám cảnh báo khả năng tự lan
     ctx.beginPath();
     ctx.arc(x + w * 0.5, y + h * 0.5, w * 0.11, 0, Math.PI * 2);
     ctx.fillStyle = '#c084fc';
     ctx.fill();
+    ctx.restore();
+  }
+
+  // [NĂM 2] Lớp Hoá Đá Tử Xà Basilisk (1–3 lớp bọc cứng viên kẹo, ngăn đổi chỗ/rơi/ghép màu!)
+  drawPetrifiedStoneOverlay(ctx, x, y, w, h, rad, layer) {
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, rad);
+    ctx.fillStyle = layer >= 2 ? 'rgba(51, 65, 85, 0.72)' : 'rgba(71, 85, 105, 0.52)';
+    ctx.fill();
+    ctx.lineWidth = layer >= 2 ? 3 : 2.2;
+    ctx.strokeStyle = layer >= 3 ? '#fde047' : '#6ee7b7';
+    ctx.stroke();
+
+    // Đường nứt đá & con mắt rắn xanh lục bảo
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.16, y + h * 0.22);
+    ctx.lineTo(x + w * 0.44, y + h * 0.48);
+    ctx.lineTo(x + w * 0.28, y + h * 0.82);
+    ctx.moveTo(x + w * 0.84, y + h * 0.26);
+    ctx.lineTo(x + w * 0.56, y + h * 0.52);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, w * 0.17, h * 0.11, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#10b981';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = '#fde047';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h * 0.08);
+    ctx.lineTo(cx, cy + h * 0.08);
+    ctx.strokeStyle = '#022c22';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (layer >= 2) {
+      this.drawLayerBadge(ctx, x, y, w, h, layer, '#064e3b', '#6ee7b7', '#fef08a');
+    }
+    ctx.restore();
+  }
+
+  // [NĂM 3] Giám Ngục Hút Nộ Azkaban (2–4 HP)
+  drawDementorWraith(ctx, x, y, w, h, rad, hp, now) {
+    const hover = Math.sin(now * 0.005 + x * 0.04) * 2;
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, rad);
+    ctx.fillStyle = 'rgba(8, 20, 42, 0.92)';
+    ctx.fill();
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.stroke();
+
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.48 + hover;
+    // Áo choàng đen Giám Ngục
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h * 0.34);
+    ctx.quadraticCurveTo(cx + w * 0.34, cy - h * 0.24, cx + w * 0.3, cy + h * 0.24);
+    ctx.lineTo(cx + w * 0.14, cy + h * 0.15);
+    ctx.lineTo(cx, cy + h * 0.27);
+    ctx.lineTo(cx - w * 0.14, cy + h * 0.15);
+    ctx.lineTo(cx - w * 0.3, cy + h * 0.24);
+    ctx.quadraticCurveTo(cx - w * 0.34, cy - h * 0.24, cx, cy - h * 0.34);
+    ctx.closePath();
+    ctx.fillStyle = '#020617';
+    ctx.fill();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = '#7dd3fc';
+    ctx.stroke();
+
+    // Hốc mũ băng giá
+    ctx.fillStyle = '#bae6fd';
+    ctx.beginPath();
+    ctx.arc(cx - w * 0.08, cy - h * 0.08, Math.max(1.6, w * 0.042), 0, Math.PI * 2);
+    ctx.arc(cx + w * 0.08, cy - h * 0.08, Math.max(1.6, w * 0.042), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ngọc chỉ báo máu Giám Ngục (tối đa 4 viên)
+    const maxPips = Math.max(3, hp);
+    const span = w * 0.56;
+    for (let i = 0; i < maxPips; i++) {
+      const gx = cx - span * 0.5 + (maxPips === 1 ? 0 : (i / (maxPips - 1)) * span);
+      const gy = y + h * 0.84;
+      ctx.beginPath();
+      ctx.arc(gx, gy, Math.max(2, w * 0.052), 0, Math.PI * 2);
+      ctx.fillStyle = i < hp ? '#38bdf8' : 'rgba(148, 163, 184, 0.25)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // [NĂM 4] Rãnh Gió Lốc Mê Cung Tam Pháp Thuật
+  drawMazeWindPlates(ctx, mazeConfig, mask, size, cs, now) {
+    const shift = (((now * 0.002) % 1) + 1) % 1;
+    ctx.save();
+    mazeConfig.rows.forEach((r, idx) => {
+      if (r < 0 || r >= size) return;
+      const dir = idx % 2 === 0 ? 1 : -1;
+      for (let c = 0; c < size; c++) {
+        if (mask[r]?.[c] !== 1) continue;
+        const x = this.padding + c * cs + 2;
+        const y = this.padding + r * cs + 2;
+        const w = cs - 4;
+        const h = cs - 4;
+
+        roundRectPath(ctx, x, y, w, h, cs * 0.14);
+        ctx.fillStyle = 'rgba(6, 78, 59, 0.34)';
+        ctx.fill();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
+        ctx.stroke();
+
+        const cx = x + w * 0.5 + dir * (shift - 0.5) * cs * 0.22;
+        const cy = y + h * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - dir * cs * 0.1, cy - cs * 0.11);
+        ctx.lineTo(cx + dir * cs * 0.08, cy);
+        ctx.lineTo(cx - dir * cs * 0.1, cy + cs * 0.11);
+        ctx.strokeStyle = 'rgba(110, 231, 183, 0.65)';
+        ctx.lineWidth = 1.9;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+  }
+
+  // [NĂM 5] Vùng cấm phép 3×3 & Bia Sắc Lệnh Hồng Umbridge
+  drawDecreeAuraCell(ctx, x, y, w, h, rad) {
+    ctx.save();
+    roundRectPath(ctx, x + 1, y + 1, w - 2, h - 2, rad);
+    ctx.fillStyle = 'rgba(236, 72, 153, 0.11)';
+    ctx.fill();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'rgba(244, 114, 182, 0.52)';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawUmbridgeDecreePlaque(ctx, x, y, w, h, rad, hp, now) {
+    const pulse = 0.82 + 0.18 * Math.sin(now * 0.006);
+    ctx.save();
+    roundRectPath(ctx, x + w * 0.06, y, w * 0.88, h, rad);
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, '#be185d');
+    g.addColorStop(0.6, '#831843');
+    g.addColorStop(1, '#500724');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = `rgba(253, 224, 71, ${pulse})`;
+    ctx.stroke();
+
+    // Dòng chữ sắc lệnh & con dấu Bộ Pháp Thuật
+    ctx.strokeStyle = '#fbcfe8';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.24, y + h * 0.28);
+    ctx.lineTo(x + w * 0.76, y + h * 0.28);
+    ctx.moveTo(x + w * 0.24, y + h * 0.44);
+    ctx.lineTo(x + w * 0.72, y + h * 0.44);
+    ctx.moveTo(x + w * 0.24, y + h * 0.6);
+    ctx.lineTo(x + w * 0.56, y + h * 0.6);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x + w * 0.7, y + h * 0.62, w * 0.09, 0, Math.PI * 2);
+    ctx.fillStyle = '#fde047';
+    ctx.fill();
+
+    this.drawLayerBadge(ctx, x, y, w, h, hp, '#500724', '#f9a8d4', '#fef08a');
+    ctx.restore();
+  }
+
+  // [NĂM 6] Lửa Địa Ngục Fiendfyre (2 HP: tự bùng lan & nung ngắn ngòi Bom!)
+  drawFiendfyreFlame(ctx, x, y, w, h, rad, hp, now) {
+    const flicker = Math.sin(now * 0.011 + x * 0.1) * (w * 0.045);
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, rad);
+    ctx.fillStyle = 'rgba(67, 20, 7, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = hp >= 2 ? '#fb923c' : '#fde047';
+    ctx.stroke();
+
+    const cx = x + w * 0.5;
+    const botY = y + h * 0.84;
+
+    // Ngọn lửa ngoài cam đỏ rực
+    ctx.beginPath();
+    ctx.moveTo(cx, y + h * 0.12);
+    ctx.quadraticCurveTo(cx + w * 0.36 + flicker, y + h * 0.38, cx + w * 0.28, botY);
+    ctx.quadraticCurveTo(cx, y + h * 0.92, cx - w * 0.28, botY);
+    ctx.quadraticCurveTo(cx - w * 0.36 - flicker, y + h * 0.38, cx, y + h * 0.12);
+    ctx.closePath();
+    ctx.fillStyle = '#ea580c';
+    ctx.fill();
+
+    // Lõi lửa vàng trắng ma quái
+    ctx.beginPath();
+    ctx.moveTo(cx + flicker * 0.4, y + h * 0.3);
+    ctx.quadraticCurveTo(cx + w * 0.18, y + h * 0.52, cx + w * 0.14, botY - h * 0.06);
+    ctx.quadraticCurveTo(cx, botY, cx - w * 0.14, botY - h * 0.06);
+    ctx.quadraticCurveTo(cx - w * 0.18, y + h * 0.52, cx + flicker * 0.4, y + h * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = hp >= 2 ? '#fef08a' : '#fda4af';
+    ctx.fill();
+
+    if (hp >= 2) {
+      this.drawLayerBadge(ctx, x, y, w, h, hp, '#431407', '#fb923c', '#fef08a');
+    }
+    ctx.restore();
+  }
+
+  // [NĂM 7] Trường Sinh Linh Giá (Horcrux 4–5 HP: Khiên Hồn Tối Thượng khi HP >= 4!)
+  drawHorcruxRelic(ctx, x, y, w, h, rad, hp, now) {
+    const shielded = hp >= 4;
+    const pulse = 0.72 + 0.28 * Math.sin(now * 0.008);
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const r = Math.min(w, h) * 0.38;
+
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, rad);
+    ctx.fillStyle = shielded ? 'rgba(30, 11, 56, 0.94)' : 'rgba(6, 46, 36, 0.92)';
+    ctx.fill();
+    ctx.lineWidth = shielded ? 2.8 : 2.2;
+    ctx.strokeStyle = shielded ? `rgba(192, 132, 252, ${pulse})` : '#34d399';
+    ctx.stroke();
+
+    // Vòng Khiên Hồn Tối Thượng (báo hiệu rõ ràng: miễn nhiễm ghép thường khi HP >= 4!)
+    if (shielded) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.12, 0, Math.PI * 2);
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = '#fde047';
+      ctx.stroke();
+    }
+
+    // Mề đay lục giác Hắc Ám
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const ang = -Math.PI / 2 + (i * Math.PI) / 3;
+      const px = cx + Math.cos(ang) * r * 0.88;
+      const py = cy + Math.sin(ang) * r * 0.88;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = shielded ? '#3b0764' : '#065f46';
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#fef08a';
+    ctx.stroke();
+
+    // Lõi mảnh hồn trung tâm
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2);
+    ctx.fillStyle = shielded ? '#e879f9' : '#6ee7b7';
+    ctx.fill();
+
+    this.drawLayerBadge(
+      ctx,
+      x,
+      y,
+      w,
+      h,
+      hp,
+      shielded ? '#581c87' : '#064e3b',
+      shielded ? '#fde047' : '#6ee7b7',
+      '#ffffff'
+    );
     ctx.restore();
   }
 
@@ -576,13 +937,19 @@ export class BoardRenderer {
     ctx.restore();
   }
 
+  // Băng Ngục Azkaban 1–5 lớp
   drawSugarIceLock(ctx, x, y, w, h, rad, layer) {
     ctx.save();
     roundRectPath(ctx, x, y, w, h, rad);
-    ctx.fillStyle = layer >= 2 ? 'rgba(125, 211, 252, 0.30)' : 'rgba(186, 230, 253, 0.18)';
+    ctx.fillStyle =
+      layer >= 4
+        ? 'rgba(14, 116, 144, 0.48)'
+        : layer >= 2
+          ? 'rgba(125, 211, 252, 0.30)'
+          : 'rgba(186, 230, 253, 0.18)';
     ctx.fill();
-    ctx.lineWidth = layer >= 2 ? 3.4 : 2.4;
-    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = layer >= 3 ? 3.4 : layer === 2 ? 3 : 2.2;
+    ctx.strokeStyle = layer >= 4 ? '#38bdf8' : '#ffffff';
     ctx.stroke();
 
     if (layer >= 2) {
@@ -591,13 +958,13 @@ export class BoardRenderer {
       ctx.lineTo(x + w - 5, y + h - 5);
       ctx.moveTo(x + w - 5, y + 5);
       ctx.lineTo(x + 5, y + h - 5);
-      ctx.strokeStyle = 'rgba(14, 116, 144, 0.65)';
-      ctx.lineWidth = 5.5;
+      ctx.strokeStyle = 'rgba(14, 116, 144, 0.68)';
+      ctx.lineWidth = 5;
       ctx.lineCap = 'round';
       ctx.stroke();
 
       ctx.strokeStyle = '#e0f2fe';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.6;
       ctx.stroke();
     } else {
       ctx.beginPath();
@@ -606,9 +973,13 @@ export class BoardRenderer {
       ctx.moveTo(x + w - 15, y + h - 5);
       ctx.lineTo(x + w - 5, y + h - 15);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.6;
+      ctx.lineWidth = 2.4;
       ctx.lineCap = 'round';
       ctx.stroke();
+    }
+
+    if (layer >= 3) {
+      this.drawLayerBadge(ctx, x, y, w, h, layer, '#083344', '#7dd3fc', '#ffffff');
     }
     ctx.restore();
   }
@@ -618,21 +989,18 @@ export class BoardRenderer {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-    // 1. Bảo vật thả đáy: Hòn Đá Phù Thủy (Philosopher's Stone Ingredient)
     if (piece.isIngredient) {
       this.drawPhilosopherStone(ctx, cx, cy, drawSize, now);
       ctx.restore();
       return;
     }
 
-    // 2. Xoáy Cam Thảo (Licorice Swirl — rơi theo trọng lực & chặn tia Kẹo Sọc)
     if (piece.blocker === 'swirl') {
       this.drawLicoriceSwirl(ctx, cx, cy, drawSize);
       ctx.restore();
       return;
     }
 
-    // 3. Hào quang cảnh báo Kẹo Bọc chuẩn bị Nổ Nhịp 2 (Wrapped Double Blast)
     if (piece.primedWrapped) {
       ctx.save();
       ctx.beginPath();
@@ -645,7 +1013,6 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 4. Đôi cánh vàng Snitch cho Kẹo Cánh Vàng Tầm Thủ (2×2 Square Match)
     if (piece.special === 'seeker') {
       this.drawGoldenSeekerWings(ctx, cx, cy, drawSize, now);
     }
@@ -654,7 +1021,6 @@ export class BoardRenderer {
     const renderScale = piece.special === 'seeker' ? 0.78 : 1;
     const sSize = drawSize * renderScale;
 
-    // Contact drop shadow (hardware-accelerated ellipse, 0 CPU shadowBlur overhead)
     ctx.beginPath();
     ctx.ellipse(cx, cy + sSize * 0.38, sSize * 0.34, sSize * 0.12, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
@@ -678,12 +1044,10 @@ export class BoardRenderer {
       ctx.stroke();
     }
 
-    // 5. Huy hiệu Bom Kẹo Đếm Ngược (Candy Bomb Timer)
     if (piece.bombTimer !== null && piece.bombTimer !== undefined) {
       this.drawBombTimerOverlay(ctx, cx, cy, drawSize, piece.bombTimer, now);
     }
 
-    // 6. Huy hiệu Chìa Khoá Đường Vàng Gringotts (Sugar Key)
     if (piece.hasKey) {
       this.drawSugarKeyBadge(ctx, cx, cy, drawSize, now);
     }
@@ -695,7 +1059,6 @@ export class BoardRenderer {
     const r = size * 0.44;
     const glow = 0.75 + 0.25 * Math.sin(now * 0.006);
     ctx.save();
-    // Vòng hào quang phát sáng nhẹ thay cho shadowBlur
     ctx.beginPath();
     ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(239, 68, 68, ${0.25 * glow})`;
@@ -727,7 +1090,6 @@ export class BoardRenderer {
     ctx.strokeStyle = '#fde047';
     ctx.stroke();
 
-    // Mặt cắt kim cương bên trong
     ctx.beginPath();
     ctx.moveTo(cx, cy - r * 0.65);
     ctx.lineTo(cx + r * 0.45, cy - r * 0.1);
@@ -742,7 +1104,6 @@ export class BoardRenderer {
   drawLicoriceSwirl(ctx, cx, cy, size) {
     const r = size * 0.43;
     ctx.save();
-    // Bóng đổ tiếp xúc nhanh không tốn GPU blur
     ctx.beginPath();
     ctx.ellipse(cx, cy + r * 0.82, r * 0.85, r * 0.26, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
@@ -761,7 +1122,6 @@ export class BoardRenderer {
     ctx.strokeStyle = '#e2e8f0';
     ctx.stroke();
 
-    // Đường xoáy ốc Cam Thảo đặc trưng Candy Crush
     ctx.beginPath();
     for (let t = 0; t <= Math.PI * 3.7; t += 0.22) {
       const rr = (t / (Math.PI * 3.9)) * r * 0.82;
@@ -804,14 +1164,12 @@ export class BoardRenderer {
 
   drawBombTimerOverlay(ctx, cx, cy, size, timer, now) {
     const danger = timer <= 3;
-    // Nhịp thở chậm tối đa ~1.6 Hz (an toàn dưới ngưỡng 3 lần chớp/giây)
     const pulse = danger ? 1 + 0.1 * Math.sin(now * 0.01) : 1;
     const bx = cx + size * 0.24;
     const by = cy + size * 0.24;
     const br = size * 0.22 * pulse;
 
     ctx.save();
-    // Dây cháy chậm phát tia lửa trên đỉnh viên kẹo
     ctx.beginPath();
     ctx.moveTo(cx + size * 0.1, cy - size * 0.3);
     ctx.quadraticCurveTo(cx + size * 0.28, cy - size * 0.46, cx + size * 0.34, cy - size * 0.34);
@@ -824,7 +1182,6 @@ export class BoardRenderer {
     ctx.fillStyle = danger ? '#ef4444' : '#fef08a';
     ctx.fill();
 
-    // Huy hiệu đếm ngược tương phản cao
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fillStyle = danger ? '#991b1b' : '#090d1a';
@@ -833,7 +1190,7 @@ export class BoardRenderer {
     ctx.strokeStyle = danger ? '#fecaca' : '#fde047';
     ctx.stroke();
 
-    ctx.font = `900 ${Math.max(11, Math.round(size * 0.25))}px "Fredoka", "Nunito", sans-serif`;
+    ctx.font = `900 ${Math.max(10, Math.round(size * 0.25))}px "Fredoka", "Nunito", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
@@ -841,9 +1198,8 @@ export class BoardRenderer {
     ctx.restore();
   }
 
-  // Băng Chuyền Cầu Thang Dịch Chuyển (Conveyor Belt)
   drawConveyorPlates(ctx, conveyorLoops, cs, now) {
-    const phase = ((now * 0.0022) % 1 + 1) % 1;
+    const phase = (((now * 0.0022) % 1) + 1) % 1;
     ctx.save();
     for (const loop of conveyorLoops) {
       if (!Array.isArray(loop) || loop.length < 2) continue;
@@ -887,10 +1243,10 @@ export class BoardRenderer {
     ctx.restore();
   }
 
-  // Vạc Độc Dược Đẻ Vật Cản (Magic Cauldron 1..3 HP)
-  drawMagicCauldron(ctx, x, y, w, h, hp, now) {
+  // Vạc Độc Dược Đẻ Vật Cản (1..3 HP)
+  drawMagicCauldron(ctx, x, y, w, h, rad, hp, now) {
     ctx.save();
-    roundRectPath(ctx, x, y, w, h, w * 0.18);
+    roundRectPath(ctx, x, y, w, h, rad);
     ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
     ctx.fill();
     ctx.lineWidth = 2;
@@ -902,7 +1258,6 @@ export class BoardRenderer {
     const potW = w * 0.68;
     const potH = h * 0.54;
 
-    // Thân vạc gang đen viền đồng phép thuật
     ctx.beginPath();
     ctx.ellipse(cx, cy + potH * 0.06, potW * 0.5, potH * 0.48, 0, 0, Math.PI * 2);
     const potGrad = ctx.createRadialGradient(cx - potW * 0.15, cy - potH * 0.1, 2, cx, cy, potW * 0.55);
@@ -915,7 +1270,6 @@ export class BoardRenderer {
     ctx.strokeStyle = '#fde047';
     ctx.stroke();
 
-    // Miệng vạc & nước độc dược lục bảo sôi sục
     ctx.beginPath();
     ctx.ellipse(cx, y + h * 0.34, potW * 0.44, h * 0.12, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#10b981';
@@ -924,28 +1278,25 @@ export class BoardRenderer {
     ctx.strokeStyle = '#fef08a';
     ctx.stroke();
 
-    // Bọt khí độc dược nổi lấp lánh
-    const b1 = Math.sin(now * 0.006) * 2.5;
-    const b2 = Math.cos(now * 0.007) * 2.5;
+    const b1 = Math.sin(now * 0.006) * 2.2;
+    const b2 = Math.cos(now * 0.007) * 2.2;
     ctx.fillStyle = '#bef264';
     ctx.beginPath();
     ctx.arc(cx - w * 0.11, y + h * 0.28 + b1, w * 0.055, 0, Math.PI * 2);
     ctx.arc(cx + w * 0.12, y + h * 0.25 + b2, w * 0.045, 0, Math.PI * 2);
     ctx.fill();
 
-    // Ngọc chỉ báo máu Vạc (1..3 viên)
     for (let i = 0; i < 3; i++) {
       const gx = cx + (i - 1) * w * 0.19;
-      const gy = y + h * 0.78;
+      const gy = y + h * 0.8;
       ctx.beginPath();
-      ctx.arc(gx, gy, w * 0.065, 0, Math.PI * 2);
+      ctx.arc(gx, gy, w * 0.062, 0, Math.PI * 2);
       ctx.fillStyle = i < hp ? '#fde047' : 'rgba(148, 163, 184, 0.25)';
       ctx.fill();
     }
     ctx.restore();
   }
 
-  // Ô Khoá Vàng Hầm Ngục Gringotts (Sugar Lock)
   drawGringottsPadlock(ctx, x, y, w, h, rad, now) {
     ctx.save();
     roundRectPath(ctx, x, y, w, h, rad);
@@ -955,7 +1306,6 @@ export class BoardRenderer {
     ctx.strokeStyle = '#fbbf24';
     ctx.stroke();
 
-    // Hai sợi dây xích vàng chéo phong ấn
     ctx.beginPath();
     ctx.moveTo(x + 4, y + 4);
     ctx.lineTo(x + w - 4, y + h - 4);
@@ -966,7 +1316,6 @@ export class BoardRenderer {
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Ổ khoá vàng Gringotts ở chính giữa
     const cx = x + w * 0.5;
     const cy = y + h * 0.54;
     const lw = w * 0.36;
@@ -993,7 +1342,6 @@ export class BoardRenderer {
     ctx.restore();
   }
 
-  // Huy Hiệu Chìa Khoá Đường Có Cánh (Sugar Key Badge ở góc trên trái viên kẹo)
   drawSugarKeyBadge(ctx, cx, cy, size, now) {
     const kx = cx - size * 0.24;
     const ky = cy - size * 0.24;
@@ -1010,7 +1358,6 @@ export class BoardRenderer {
     ctx.strokeStyle = '#fef08a';
     ctx.stroke();
 
-    // Biểu tượng chìa khoá vàng thu nhỏ
     ctx.beginPath();
     ctx.arc(-kr * 0.22, -kr * 0.12, kr * 0.28, 0, Math.PI * 2);
     ctx.strokeStyle = '#fde047';
@@ -1030,7 +1377,6 @@ export class BoardRenderer {
   }
 
   drawVfx(ctx, vfx, cs, size, now) {
-    // 1. Tia kẹo phóng ngang / dọc rực rỡ (có dừng lại đúng tại ô Xoáy Cam Thảo nếu bị chặn!)
     for (const b of vfx.beams) {
       const p = 1 - b.life / b.maxLife;
       const alpha = Math.max(0, 1 - p);
@@ -1068,7 +1414,6 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 2. Đường bay lượn vòng cung của Kẹo Cánh Vàng Tầm Thủ (Seeker Homing Projectiles)
     for (const sk of vfx.seekers || []) {
       const t = Math.min(1, Math.max(0, 1 - sk.life / sk.maxLife));
       const from = this.cellCenter(sk.r1, sk.c1);
@@ -1091,7 +1436,6 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 3. Tia sét cầu vồng từ Cầu Đậu Ngũ Sắc
     for (const arc of vfx.arcs) {
       const alpha = Math.max(0, arc.life / arc.maxLife);
       const from = this.cellCenter(arc.r1, arc.c1);
@@ -1119,7 +1463,6 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 4. Vòng sóng nổ Kẹo Bọc 3x3 / 5x5
     for (const ring of vfx.rings) {
       const p = 1 - ring.life / ring.maxLife;
       const center = this.cellCenter(ring.r, ring.c);
@@ -1133,7 +1476,6 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 5. Mảnh kẹo & bụi sao văng tung toé (Vẽ theo batch, không save/restore lặp lại)
     if (vfx.particles && vfx.particles.length > 0) {
       for (let i = 0; i < vfx.particles.length; i++) {
         const pt = vfx.particles[i];
@@ -1147,7 +1489,6 @@ export class BoardRenderer {
       ctx.globalAlpha = 1;
     }
 
-    // 6. Chữ điểm & Khẩu hiệu phép thuật
     for (const pop of vfx.popups) {
       const alpha = Math.min(1, (pop.life / pop.maxLife) * 1.45);
       ctx.save();

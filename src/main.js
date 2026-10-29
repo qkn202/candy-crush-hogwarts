@@ -1,21 +1,32 @@
-// Điều phối toàn bộ Game Candy Crush Hogwarts (Season 1: 100 Bản Đồ, Đầy Đủ Cơ Chế Candy Crush Saga Gốc)
+// Điều phối toàn bộ Game Candy Crush Hogwarts (7 Năm Học Phép Thuật: 77 Chương, 7.777 Màn Chơi)
 
 import {
   BOOSTERS,
-  CHAPTER_STAR_CHESTS,
   CHOCOLATE_FROG_CARDS,
   DAILY_WHEEL_SEGMENTS,
   FROG_CARD_LOCKED_SVG,
+  HOGWARTS_SEASONS,
   HOUSES,
+  MAX_TOTAL_STARS,
   OBSTACLE_ICONS,
   PREGAME_BOOSTERS,
-  SEASON_1_CHAPTERS,
-  TILE_TYPES
+  TILE_TYPES,
+  TOTAL_CHAPTERS,
+  TOTAL_LEVELS,
+  TOTAL_SEASONS,
+  getChapterStarChests,
+  getSeasonByLevel
 } from './data/lore.js';
-import { getLevelById, SEASON_1_LEVELS } from './data/levels.js';
+import {
+  getChapterForLevel,
+  getDifficultyBadgeMeta,
+  getLevelById,
+  getLevelMeta,
+  getSeasonChapters
+} from './data/levels.js';
 import { Match3Engine } from './engine/match3Engine.js';
 import { sound } from './engine/sound.js';
-import { MAX_HEARTS, storage } from './services/storageService.js';
+import { MAX_HEARTS, getGlobalChapterBounds, storage } from './services/storageService.js';
 import { closeTopLayer, initModernDialogs, openModal, setDialogLocked } from './ui/dialogs.js';
 
 function escapeHtml(str) {
@@ -89,6 +100,8 @@ let currentLeaderboardFilter = 'all';
 let wheelSpinning = false;
 let wheelRotationDeg = 0;
 let hatSortingBusy = false;
+let activeSeasonId = 1;
+let activeChapterInSeason = 1;
 
 const viewMap = document.getElementById('view-map');
 const viewGame = document.getElementById('view-game');
@@ -128,26 +141,54 @@ const engine = new Match3Engine(canvas, {
   onToast: (msg) => showToast(msg)
 });
 
-// ==================== TOPBAR, TIM PHÉP THUẬT, CHUỖI THẮNG & ÂM THANH ====================
+// ==================== TOPBAR, TIM PHÉP THUẬT, BẤT TỬ TIM, ĐŨA PHÉP & ÂM THANH ====================
+function syncSeasonSelectOptions(player = storage.getActivePlayer()) {
+  const selectEl = document.getElementById('season-select');
+  if (!selectEl) return;
+  Array.from(selectEl.options).forEach((opt) => {
+    const sId = Number(opt.value);
+    const sMeta = HOGWARTS_SEASONS[sId - 1];
+    if (!sMeta) return;
+    const unlocked = storage.isSeasonUnlocked(sId, player);
+    const rangeStr = `${sMeta.range[0].toLocaleString('vi-VN')}–${sMeta.range[1].toLocaleString('vi-VN')}`;
+    opt.textContent = `${unlocked ? '' : '🔒 '}${sMeta.yearLabel}: ${sMeta.title} (${rangeStr})`;
+  });
+  selectEl.value = String(activeSeasonId);
+}
+
 function refreshTopbar() {
   const player = storage.getActivePlayer();
   const house = HOUSES[player?.house] || HOUSES.gryffindor;
   const stats = player ? storage.getPlayerStats(player) : { stars: 0 };
   const heartState = storage.syncHearts(player);
+  const buffs = storage.getCollectionBuffs(player);
 
   document.getElementById('hud-house-crest').innerHTML = house.emblemSvg;
   document.getElementById('hud-wizard-name').textContent = player ? player.name : 'Phù Thủy Mới';
-  document.getElementById('hud-house-name').textContent = house.name;
+  document.getElementById('hud-house-name').textContent = `${house.name} • 🪄 Bậc ${buffs.wandRank}`;
   document.getElementById('hud-galleons').textContent = String(player ? player.galleons : 250);
-  document.getElementById('hud-total-stars').textContent = `${stats.stars}/300`;
-  document.getElementById('hud-hearts').textContent = `${heartState.hearts}/${MAX_HEARTS}`;
+  document.getElementById('hud-total-stars').textContent = `${stats.stars.toLocaleString('vi-VN')}/${MAX_TOTAL_STARS.toLocaleString('vi-VN')}`;
 
+  const heartChip = document.getElementById('btn-hearts-chip');
+  const heartGlyph = document.getElementById('hud-heart-glyph');
   const timerEl = document.getElementById('hud-heart-timer');
-  if (heartState.hearts < MAX_HEARTS && heartState.nextInSec > 0) {
+
+  if (heartState.isInfinite) {
+    heartChip?.classList.add('is-infinite');
+    if (heartGlyph) heartGlyph.textContent = '❤️‍🔥';
+    document.getElementById('hud-hearts').textContent = '∞';
     timerEl.hidden = false;
-    timerEl.textContent = formatTimerSec(heartState.nextInSec);
+    timerEl.textContent = formatTimerSec(heartState.infiniteRemainingSec);
   } else {
-    timerEl.hidden = true;
+    heartChip?.classList.remove('is-infinite');
+    if (heartGlyph) heartGlyph.textContent = '❤️';
+    document.getElementById('hud-hearts').textContent = `${heartState.hearts}/${MAX_HEARTS}`;
+    if (heartState.hearts < MAX_HEARTS && heartState.nextInSec > 0) {
+      timerEl.hidden = false;
+      timerEl.textContent = formatTimerSec(heartState.nextInSec);
+    } else {
+      timerEl.hidden = true;
+    }
   }
 
   document.getElementById('hud-streak').textContent = `×${player?.winStreak || 0}`;
@@ -159,7 +200,6 @@ function refreshTopbar() {
 
   const curLvl = storage.getHighestUnlockedLevel(player);
   const previewOn = Boolean(player?.unlockAllPreview);
-  const buffs = storage.getCollectionBuffs(player);
   const albumRatioText = `${buffs.uniqueCount}/${buffs.totalCards}`;
   document.getElementById('lbl-current-level').textContent = String(curLvl);
   document.getElementById('lbl-preview-state').textContent = previewOn ? 'Bật' : 'Tắt';
@@ -168,11 +208,13 @@ function refreshTopbar() {
   if (hudAlbumEl) hudAlbumEl.textContent = albumRatioText;
   const mapAlbumEl = document.getElementById('lbl-map-album');
   if (mapAlbumEl) mapAlbumEl.textContent = albumRatioText;
+
+  syncSeasonSelectOptions(player);
 }
 
 setInterval(() => {
   const p = storage.getActivePlayer();
-  if (p && p.hearts < MAX_HEARTS) {
+  if (p && (p.hearts < MAX_HEARTS || (p.infiniteHeartsUntil || 0) > 0)) {
     refreshTopbar();
   }
 }, 1000);
@@ -184,6 +226,10 @@ document.getElementById('btn-hearts-chip').addEventListener('click', () => {
     return;
   }
   const hs = storage.syncHearts(p);
+  if (hs.isInfinite) {
+    showToast(`❤️‍🔥 Bất Tử Tim đang kích hoạt (còn ${formatTimerSec(hs.infiniteRemainingSec)})!`);
+    return;
+  }
   if (hs.hearts >= MAX_HEARTS) {
     showToast('❤️ Tim Phép Thuật đang đầy 5/5!');
     return;
@@ -216,8 +262,13 @@ document.getElementById('btn-toggle-sound').addEventListener('click', () => {
 
 function penalizeAbandonedAttemptIfMoved() {
   if (!viewGame.hidden && engine.level && engine.movesUsed > 0 && !engine.ended) {
+    const inf = storage.isInfiniteHeartsActive();
     storage.loseHeartAndStreak();
-    showToast('Đã rời màn sau khi đi nước — trừ 1 Tim & đặt lại Chuỗi Cốc Lửa.');
+    showToast(
+      inf
+        ? 'Đã rời màn sau khi đi nước — đặt lại Chuỗi Cốc Lửa (không tốn Tim nhờ Bất Tử Tim ❤️‍🔥).'
+        : 'Đã rời màn sau khi đi nước — trừ 1 Tim & đặt lại Chuỗi Cốc Lửa.'
+    );
   }
 }
 
@@ -230,11 +281,25 @@ document.getElementById('btn-back-map').addEventListener('click', () => {
   switchToMapView();
 });
 
-// ==================== BẢN ĐỒ ĐƯỜNG MÒN UỐN LƯỢN S-CURVE SEASON 1 (100 MÀN) ====================
-function setActiveChapterTab(chapterId) {
+// ==================== BẢN ĐỒ 7 NĂM HỌC HOGWARTS (77 CHƯƠNG / 7.777 MÀN) ====================
+function canPlayLevel(levelId, player = storage.getActivePlayer()) {
+  if (storage.isLevelUnlocked(levelId, player)) return true;
+  // Màn Khảo Hạch O.W.L./N.E.W.T. đầu mỗi Năm 2..7 luôn mở để người chơi giỏi thi vượt năm!
+  return HOGWARTS_SEASONS.some((s) => s.examLevelId === Number(levelId));
+}
+
+function syncMapFocusToLevel(levelId) {
+  const ch = getChapterForLevel(levelId);
+  activeSeasonId = ch.seasonId;
+  activeChapterInSeason = ch.chapterIndexInSeason;
+  syncSeasonSelectOptions();
+}
+
+function setActiveChapterTab(chapterInSeason) {
+  activeChapterInSeason = Math.max(1, Math.min(11, Number(chapterInSeason) || 1));
   const container = document.getElementById('chapter-tabs');
   container.querySelectorAll('.chapter-tab').forEach((b) => {
-    const isMatch = String(b.dataset.chapterId) === String(chapterId);
+    const isMatch = Number(b.dataset.chapterIdx) === activeChapterInSeason;
     b.classList.toggle('active', isMatch);
     if (isMatch) {
       b.setAttribute('aria-current', 'true');
@@ -246,122 +311,172 @@ function setActiveChapterTab(chapterId) {
 }
 
 function renderChapterTabs() {
+  const chapters = getSeasonChapters(activeSeasonId);
   const container = document.getElementById('chapter-tabs');
-  container.innerHTML = SEASON_1_CHAPTERS.map(
-    (ch, idx) => `
-      <button type="button" class="chapter-tab ${idx === 0 ? 'active' : ''}" data-chapter-id="${ch.id}" ${idx === 0 ? 'aria-current="true"' : ''}>
-        Chương ${ch.id} (${ch.range[0]}–${ch.range[1]})
-      </button>
-    `
-  ).join('');
+  container.setAttribute('aria-label', `Chọn Chương Năm ${activeSeasonId}`);
+  container.innerHTML = chapters
+    .map((ch) => {
+      const isMatch = ch.chapterIndexInSeason === activeChapterInSeason;
+      return `
+        <button
+          type="button"
+          class="chapter-tab ${isMatch ? 'active' : ''}"
+          data-chapter-idx="${ch.chapterIndexInSeason}"
+          data-global-chapter="${ch.globalChapterId}"
+          ${isMatch ? 'aria-current="true"' : ''}
+        >
+          Ch.${ch.chapterIndexInSeason} (${ch.range[0]}–${ch.range[1]})
+        </button>
+      `;
+    })
+    .join('');
 
   container.querySelectorAll('.chapter-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      setActiveChapterTab(btn.dataset.chapterId);
-      const sec = document.getElementById(`chapter-sec-${btn.dataset.chapterId}`);
-      sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sound.playSelect();
+      setActiveChapterTab(Number(btn.dataset.chapterIdx));
+      renderSeasonMap();
+      const scroller = document.getElementById('map-scroll-container');
+      if (scroller) scroller.scrollTop = 0;
     });
   });
-}
-
-let mapScrollObserver = null;
-
-function setupMapScrollObserver() {
-  if (mapScrollObserver) {
-    mapScrollObserver.disconnect();
-    mapScrollObserver = null;
-  }
-  const scrollContainer = document.getElementById('map-scroll-container');
-  if (!scrollContainer || !('IntersectionObserver' in window)) return;
-  const sections = scrollContainer.querySelectorAll('.chapter-banner-card');
-  if (!sections.length) return;
-
-  mapScrollObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const match = entry.target.id?.match(/chapter-sec-(\d+)/);
-          if (match) {
-            setActiveChapterTab(match[1]);
-          }
-        }
-      }
-    },
-    {
-      root: scrollContainer,
-      rootMargin: '-10% 0px -70% 0px',
-      threshold: 0.05
-    }
-  );
-
-  sections.forEach((s) => mapScrollObserver.observe(s));
 }
 
 function renderSeasonMap() {
   const player = storage.getActivePlayer();
   const house = HOUSES[player?.house] || HOUSES.gryffindor;
-  const highestUnlocked = storage.getHighestUnlockedLevel(player);
+  const seasonMeta = HOGWARTS_SEASONS[activeSeasonId - 1] || HOGWARTS_SEASONS[0];
+  const seasonUnlocked = storage.isSeasonUnlocked(seasonMeta.id, player);
+  const seasonFrontier = storage.getSeasonFrontierLevel(seasonMeta.id, player);
+  const chapters = getSeasonChapters(seasonMeta.id);
+  const ch = chapters[activeChapterInSeason - 1] || chapters[0];
   const progress = player?.levelProgress || {};
   const listEl = document.getElementById('chapters-list');
 
-  const trailPathD =
+  const trailPath4Rows =
     'M 50 50 L 450 50 C 492 50, 492 150, 450 150 L 50 150 C 8 150, 8 250, 50 250 L 450 250 C 492 250, 492 350, 450 350 L 50 350';
+  const trailPath3Rows11 =
+    'M 50 50 L 450 50 C 492 50, 492 150, 450 150 L 50 150 C 8 150, 8 250, 50 250';
 
-  listEl.innerHTML = SEASON_1_CHAPTERS.map((ch) => {
-    const chapterLevels = SEASON_1_LEVELS.slice(ch.range[0] - 1, ch.range[1]);
+  const levelIds = [];
+  for (let id = ch.range[0]; id <= ch.range[1]; id++) {
+    levelIds.push(id);
+  }
 
-    const nodesHtml = chapterLevels
-      .map((lvl, idx) => {
-        const p = progress[lvl.id];
-        const stars = p?.stars || 0;
-        const isUnlocked = lvl.id <= highestUnlocked;
-        const isCurrent = !player?.unlockAllPreview && lvl.id === highestUnlocked;
-        const isCleared = stars > 0;
+  const stageBlocks = [];
+  for (let startIdx = 0; startIdx < levelIds.length; startIdx += 20) {
+    stageBlocks.push(levelIds.slice(startIdx, startIdx + 20));
+  }
 
-        // Bố cục đường mòn chữ S uốn lượn chuẩn Candy Crush (hàng chẵn trái->phải, hàng lẻ phải->trái)
-        // trong khi vẫn giữ nguyên thứ tự DOM 1..20 để điều hướng phím Tab chuẩn trợ năng!
-        const row = Math.floor(idx / 5);
-        const col = row % 2 === 0 ? idx % 5 : 4 - (idx % 5);
+  const stagesHtml = stageBlocks
+    .map((stageIds, stageIdx) => {
+      const isShortStage = stageIds.length <= 15;
+      const svgViewBox = isShortStage ? '0 0 500 300' : '0 0 500 400';
+      const svgPathD = isShortStage ? trailPath3Rows11 : trailPath4Rows;
+      // Chỉ gắn .saga-stage-deferred cho các chặng nằm khuất dưới đường cắt màn hình đầu (stageIdx >= 1)!
+      const stageCls = [
+        'saga-stage-block',
+        stageIdx >= 1 ? 'saga-stage-deferred' : '',
+        isShortStage ? 'saga-stage-short' : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-        const classes = ['map-node-btn'];
-        if (isUnlocked) classes.push('unlocked');
-        if (isCleared) classes.push('cleared');
-        if (isCurrent) classes.push('current');
-        if (lvl.isBoss) classes.push('boss');
+      const nodesHtml = stageIds
+        .map((lvlId, idx) => {
+          const meta = getLevelMeta(lvlId);
+          const diffBadge = getDifficultyBadgeMeta(meta.difficultyTier);
+          const p = progress[lvlId];
+          const stars = p?.stars || 0;
+          const isUnlocked = canPlayLevel(lvlId, player);
+          const isCurrent =
+            !player?.unlockAllPreview &&
+            ((seasonUnlocked && lvlId === seasonFrontier) ||
+              (!seasonUnlocked && seasonMeta.examLevelId === lvlId));
+          const isCleared = stars > 0;
 
-        const starsMarkup = [1, 2, 3]
-          .map((s) => `<span class="${stars >= s ? 'lit' : ''}">★</span>`)
-          .join('');
-        const srState = !isUnlocked
-          ? 'Chưa mở khoá'
-          : isCleared
-            ? `Đã đạt ${stars} trên 3 sao`
-            : 'Đang mở, chưa vượt';
+          // Đường mòn chữ S uốn lượn (hàng chẵn trái->phải, hàng lẻ phải->trái) giữ nguyên thứ tự DOM tăng dần cho phím Tab!
+          const row = Math.floor(idx / 5);
+          const col = row % 2 === 0 ? idx % 5 : 4 - (idx % 5);
 
-        return `
-          <button
-            type="button"
-            id="map-node-${lvl.id}"
-            class="${classes.join(' ')}"
-            style="grid-row: ${row + 1}; grid-column: ${col + 1};"
-            data-level-id="${lvl.id}"
-            ${isUnlocked ? '' : 'disabled'}
-            title="Màn ${lvl.id}: ${escapeHtml(lvl.title)}"
-          >
-            ${isCurrent ? `<span class="node-avatar-pin" aria-hidden="true">${house.emblemSvg}</span>` : ''}
-            ${lvl.isBoss && !isCurrent ? `<span class="node-boss-crown" aria-hidden="true">${lvl.isChapterBoss ? '👑' : '⭐'}</span>` : ''}
-            <span class="node-num">${lvl.id}</span>
-            <span class="visually-hidden">: ${escapeHtml(lvl.title)}${lvl.isBoss ? ' (Màn Trùm)' : ''} — ${srState}</span>
-            <span class="node-stars" aria-hidden="true">${isUnlocked ? starsMarkup : '🔒'}</span>
-          </button>
-        `;
-      })
-      .join('');
+          const classes = ['map-node-btn', diffBadge.cssClass];
+          if (lvlId >= 1000) classes.push('digits-4');
+          if (isUnlocked) classes.push('unlocked');
+          if (isCleared) classes.push('cleared');
+          if (isCurrent) classes.push('current');
+          if (meta.isBoss) classes.push('boss');
 
-    const chapterStars = storage.getChapterStars(ch.id, player);
-    const claimedMap = player?.claimedStarChests || {};
-    const chestsHtml = CHAPTER_STAR_CHESTS.map((chest) => {
-      const key = `ch${ch.id}_${chest.threshold}`;
+          let topPin = '';
+          if (isCurrent) {
+            topPin = `<span class="node-avatar-pin" aria-hidden="true">${house.emblemSvg}</span>`;
+          } else if (meta.isSeasonFinale) {
+            topPin = '<span class="node-boss-crown" aria-hidden="true">👑</span>';
+          } else if (meta.isBoss) {
+            topPin = `<span class="node-boss-crown" aria-hidden="true">${meta.isChapterBoss ? '👑' : '⭐'}</span>`;
+          } else if (meta.isExamTrial) {
+            topPin = '<span class="node-boss-crown" aria-hidden="true">🎓</span>';
+          } else if (meta.difficultyTier === 'nightmare') {
+            topPin = '<span class="node-boss-crown" aria-hidden="true">💀</span>';
+          } else if (meta.difficultyTier === 'hard') {
+            topPin = '<span class="node-boss-crown" aria-hidden="true">🔮</span>';
+          }
+
+          const starsMarkup = [1, 2, 3]
+            .map((s) => (stars >= s ? '<span class="lit">★</span>' : '<span>☆</span>'))
+            .join('');
+          const srState = !isUnlocked
+            ? 'Chưa mở khoá'
+            : isCleared
+              ? `Đã đạt ${stars} trên 3 sao`
+              : meta.isExamTrial && !seasonUnlocked
+                ? 'Đang mở Khảo Hạch O.W.L. Vượt Năm'
+                : 'Đang mở, chưa vượt';
+
+          return `
+            <button
+              type="button"
+              id="map-node-${lvlId}"
+              class="${classes.join(' ')}"
+              style="grid-row: ${row + 1}; grid-column: ${col + 1};"
+              data-level-id="${lvlId}"
+              ${isUnlocked ? '' : 'disabled'}
+              title="Màn ${lvlId}: ${escapeHtml(meta.title)} (${escapeHtml(diffBadge.label)})"
+            >
+              ${topPin}
+              <span class="node-num">${lvlId}</span>
+              <span class="visually-hidden">: ${escapeHtml(meta.title)} (${escapeHtml(diffBadge.label)}) — ${srState}</span>
+              <span class="node-stars" aria-hidden="true">${isUnlocked ? starsMarkup : '🔒'}</span>
+            </button>
+          `;
+        })
+        .join('');
+
+      return `
+        <div class="${stageCls}" data-stage-index="${stageIdx}">
+          <div class="saga-stage-label">
+            <span>CHẶNG ${stageIdx + 1}/${stageBlocks.length}</span>
+            <span>MÀN ${stageIds[0]} – ${stageIds[stageIds.length - 1]}</span>
+          </div>
+          <div class="saga-trail-wrap">
+            <svg class="saga-trail-svg" viewBox="${svgViewBox}" preserveAspectRatio="none" aria-hidden="true">
+              <path d="${svgPathD}" stroke="rgba(45, 22, 4, 0.85)" stroke-width="16" stroke-linecap="round" fill="none" />
+              <path d="${svgPathD}" stroke="${seasonMeta.accentColor}" stroke-width="5.5" stroke-dasharray="11 9" stroke-linecap="round" fill="none" opacity="0.82" />
+            </svg>
+            <div class="saga-nodes-grid ${isShortStage ? 'rows-3' : ''}">
+              ${nodesHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  const chapterStars = storage.getChapterStars(ch.globalChapterId, player);
+  const claimedMap = player?.claimedStarChests || {};
+  const chapterChests = getChapterStarChests(ch.maxStars);
+  const chestsHtml = chapterChests
+    .map((chest) => {
+      const key = `ch${ch.globalChapterId}_${chest.threshold}`;
       const isClaimed = Boolean(claimedMap[key]);
       const isClaimable = !isClaimed && chapterStars >= chest.threshold;
       const cls = isClaimed ? 'claimed' : isClaimable ? 'claimable' : 'locked';
@@ -370,7 +485,7 @@ function renderSeasonMap() {
         <button
           type="button"
           class="star-chest-btn ${cls}"
-          data-chest-chapter="${ch.id}"
+          data-chest-chapter="${ch.globalChapterId}"
           data-chest-threshold="${chest.threshold}"
           title="${escapeHtml(`${chest.tierName} (${chest.threshold} ★): ${chest.summary}`)}"
         >
@@ -378,47 +493,111 @@ function renderSeasonMap() {
           <span>${chest.threshold}★${chest.grantFrogCard ? ' 🃏' : ''}${isClaimed ? ' Đã mở' : ''}</span>
         </button>
       `;
-    }).join('');
+    })
+    .join('');
 
-    return `
-      <section class="chapter-banner-card" id="chapter-sec-${ch.id}" style="background: ${ch.themeBg}; border-color: ${ch.borderColor};">
-        <div class="chapter-head">
-          <span class="chapter-kicker">SEASON 1 • MÀN ${ch.range[0]} – ${ch.range[1]}</span>
-          <h2>${escapeHtml(ch.title)}</h2>
-          <p>${escapeHtml(ch.subtitle)}</p>
-        </div>
-        <div class="chapter-star-chests">
-          <div class="chapter-chests-top">
-            <span id="ch-stars-lbl-${ch.id}">★ Sao Chương ${ch.id}: <strong>${chapterStars} / 60 ★</strong></span>
-            <span>Rương Sao Chương</span>
+  const owlExamHtml =
+    !seasonUnlocked && seasonMeta.examLevelId
+      ? `
+        <div class="owl-exam-banner">
+          <div class="owl-exam-info">
+            🎓 <strong>Thi Vượt Năm O.W.L./N.E.W.T.:</strong> Chinh phục ngay <strong>Màn ${seasonMeta.examLevelId}</strong> để đặc cách mở khoá toàn bộ <strong>${escapeHtml(seasonMeta.fullTitle)}</strong> mà không cần cày xong các năm trước!
           </div>
-          <progress
-            class="candy-progress chapter-stars-progress"
-            max="60"
-            value="${Math.min(60, chapterStars)}"
-            aria-labelledby="ch-stars-lbl-${ch.id}"
-          ></progress>
-          <div class="chapter-chests-row">
-            ${chestsHtml}
+          <button
+            type="button"
+            class="candy-pill-btn btn-candy-green"
+            id="btn-challenge-exam"
+            data-exam-level="${seasonMeta.examLevelId}"
+          >
+            🎓 Thi Vượt Năm (Màn ${seasonMeta.examLevelId})
+          </button>
+        </div>
+      `
+      : '';
+
+  const prevGlobalCh = ch.globalChapterId > 1 ? ch.globalChapterId - 1 : null;
+  const nextGlobalCh = ch.globalChapterId < TOTAL_CHAPTERS ? ch.globalChapterId + 1 : null;
+
+  listEl.innerHTML = `
+    <section
+      class="chapter-banner-card"
+      id="chapter-sec-${ch.globalChapterId}"
+      style="background: ${ch.themeBg}; border-color: ${ch.accentColor};"
+    >
+      <div class="chapter-head">
+        <span class="chapter-kicker">${escapeHtml(seasonMeta.fullTitle.toUpperCase())} • CHƯƠNG ${ch.chapterIndexInSeason}/11 • MÀN ${ch.range[0]}–${ch.range[1]}</span>
+        <h2>${escapeHtml(ch.title)}</h2>
+        <p>${escapeHtml(ch.subtitle)}</p>
+      </div>
+
+      <div class="season-hero-strip">
+        <div class="season-mechanic-line">
+          <span class="season-mechanic-icon" aria-hidden="true">${seasonMeta.signatureIcon}</span>
+          <div>
+            <strong>Đặc trưng ${escapeHtml(seasonMeta.yearLabel)} — ${escapeHtml(seasonMeta.signatureName)}:</strong>
+            ${escapeHtml(seasonMeta.signatureDesc)}
           </div>
         </div>
-        <div class="saga-trail-wrap">
-          <svg class="saga-trail-svg" viewBox="0 0 500 400" preserveAspectRatio="none" aria-hidden="true">
-            <path d="${trailPathD}" stroke="rgba(45, 22, 4, 0.85)" stroke-width="16" stroke-linecap="round" fill="none" />
-            <path d="${trailPathD}" stroke="#f59e0b" stroke-width="5.5" stroke-dasharray="11 9" stroke-linecap="round" fill="none" opacity="0.78" />
-          </svg>
-          <div class="saga-nodes-grid">
-            ${nodesHtml}
-          </div>
+        ${owlExamHtml}
+      </div>
+
+      <div class="chapter-star-chests">
+        <div class="chapter-chests-top">
+          <span id="ch-stars-lbl-${ch.globalChapterId}">★ Sao Chương ${ch.chapterIndexInSeason} (${escapeHtml(seasonMeta.yearLabel)}): <strong>${chapterStars} / ${ch.maxStars} ★</strong></span>
+          <span>Rương Sao Chương</span>
         </div>
-      </section>
-    `;
-  }).join('');
+        <progress
+          class="candy-progress chapter-stars-progress"
+          max="${ch.maxStars}"
+          value="${Math.min(ch.maxStars, chapterStars)}"
+          aria-labelledby="ch-stars-lbl-${ch.globalChapterId}"
+        ></progress>
+        <div class="chapter-chests-row">
+          ${chestsHtml}
+        </div>
+      </div>
+
+      ${stagesHtml}
+
+      <div class="chapter-footer-nav">
+        ${
+          prevGlobalCh
+            ? `<button type="button" class="candy-pill-btn btn-candy-blue" data-nav-global-ch="${prevGlobalCh}">← Chương trước</button>`
+            : '<span></span>'
+        }
+        ${
+          nextGlobalCh
+            ? `<button type="button" class="candy-pill-btn btn-candy-pink" data-nav-global-ch="${nextGlobalCh}">Chương kế →</button>`
+            : '<span></span>'
+        }
+      </div>
+    </section>
+  `;
 
   listEl.querySelectorAll('.map-node-btn:not(:disabled)').forEach((btn) => {
     btn.addEventListener('click', () => {
       sound.playSelect();
       openLevelBriefing(Number(btn.dataset.levelId));
+    });
+  });
+
+  document.getElementById('btn-challenge-exam')?.addEventListener('click', (e) => {
+    sound.playSelect();
+    openLevelBriefing(Number(e.currentTarget.dataset.examLevel));
+  });
+
+  listEl.querySelectorAll('[data-nav-global-ch]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const bounds = getGlobalChapterBounds(Number(btn.dataset.navGlobalCh));
+      if (!bounds) return;
+      sound.playSelect();
+      activeSeasonId = bounds.seasonId;
+      activeChapterInSeason = bounds.chapterIndexInSeason;
+      syncSeasonSelectOptions();
+      renderChapterTabs();
+      renderSeasonMap();
+      const scroller = document.getElementById('map-scroll-container');
+      if (scroller) scroller.scrollTop = 0;
     });
   });
 
@@ -440,24 +619,70 @@ function renderSeasonMap() {
       refreshTopbar();
       renderSeasonMap();
       const cardNote = res.droppedCard
-        ? ` • 🃏 ${res.droppedCard.card.name} (${res.droppedCard.isNew ? 'Thẻ Mới!' : '+25 G trùng'})`
+        ? ` • 🃏 ${res.droppedCard.card.name} (${res.droppedCard.isNew ? 'Thẻ Mới!' : `+${res.droppedCard.duplicateGalleons} G trùng`})`
         : '';
-      showToast(`🎁 Đã mở ${res.chestMeta.tierName} Chương ${chId}: ${res.chestMeta.summary}${cardNote}`);
+      showToast(`🎁 Đã mở ${res.chestMeta.tierName}: ${res.chestMeta.summary}${cardNote}`);
     });
   });
-
-  setupMapScrollObserver();
 }
 
 const appShell = document.querySelector('.app-shell');
 const supportsHasSelector = typeof CSS !== 'undefined' && CSS.supports?.('selector(:has(*))');
 
+function navigateToLevelOnMap(targetLevelId, openModalIfPlayable = false) {
+  const clamped = Math.max(1, Math.min(TOTAL_LEVELS, Math.floor(Number(targetLevelId) || 1)));
+  syncMapFocusToLevel(clamped);
+  renderChapterTabs();
+  renderSeasonMap();
+  requestAnimationFrame(() => {
+    const node = document.getElementById(`map-node-${clamped}`);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  if (openModalIfPlayable) {
+    if (canPlayLevel(clamped)) {
+      openLevelBriefing(clamped);
+    } else {
+      const s = getSeasonByLevel(clamped);
+      const examHint = s.examLevelId ? ` hoặc vượt Khảo Hạch O.W.L. Màn ${s.examLevelId}` : '';
+      showToast(`🔒 Màn ${clamped} chưa mở khoá! Hãy vượt tuần tự${examHint} hoặc bật Mở Thử 7.777 Màn.`);
+    }
+  }
+}
+
+document.getElementById('season-select')?.addEventListener('change', (e) => {
+  const nextSeason = Math.max(1, Math.min(TOTAL_SEASONS, Number(e.target.value) || 1));
+  sound.playSelect();
+  activeSeasonId = nextSeason;
+  const p = storage.getActivePlayer();
+  if (storage.isSeasonUnlocked(nextSeason, p) && !p?.unlockAllPreview) {
+    const frontier = storage.getSeasonFrontierLevel(nextSeason, p);
+    activeChapterInSeason = getChapterForLevel(frontier).chapterIndexInSeason;
+  } else {
+    activeChapterInSeason = 1;
+  }
+  renderChapterTabs();
+  renderSeasonMap();
+  const scroller = document.getElementById('map-scroll-container');
+  if (scroller) scroller.scrollTop = 0;
+});
+
+document.getElementById('form-jump-level')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = document.getElementById('jump-level-input');
+  const raw = Number(input?.value);
+  if (!Number.isFinite(raw) || raw < 1 || raw > TOTAL_LEVELS) {
+    sound.playInvalid();
+    showToast(`Hãy nhập số màn từ 1 đến ${TOTAL_LEVELS.toLocaleString('vi-VN')}!`);
+    return;
+  }
+  sound.playSelect();
+  navigateToLevelOnMap(Math.floor(raw), true);
+});
+
 document.getElementById('btn-jump-current').addEventListener('click', () => {
+  sound.playSelect();
   const cur = storage.getHighestUnlockedLevel();
-  const chId = Math.ceil(cur / 20);
-  setActiveChapterTab(chId);
-  const node = document.getElementById(`map-node-${cur}`);
-  node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  navigateToLevelOnMap(cur, false);
 });
 
 document.getElementById('btn-toggle-preview').addEventListener('click', () => {
@@ -468,22 +693,46 @@ document.getElementById('btn-toggle-preview').addEventListener('click', () => {
   const on = storage.toggleUnlockAllPreview();
   refreshTopbar();
   renderSeasonMap();
-  showToast(on ? 'Đã mở khoá xem thử toàn bộ 100 bản đồ Season 1!' : 'Đã bật lại chế độ vượt ải tuần tự chuẩn Candy Crush.');
+  showToast(
+    on
+      ? '🔓 Đã mở khoá xem thử toàn bộ 7 Năm Học (7.777 Màn)!'
+      : 'Đã bật lại chế độ vượt ải tuần tự + Thi Vượt Năm O.W.L. chuẩn Hogwarts.'
+  );
 });
 
-function switchToMapView() {
+function switchToMapView(focusLevelId = null) {
+  const focusId = focusLevelId || engine.level?.id || null;
   engine.stopLoop();
   viewGame.hidden = true;
   viewMap.hidden = false;
   if (!supportsHasSelector && appShell) appShell.classList.remove('is-playing');
+  if (focusId) {
+    syncMapFocusToLevel(focusId);
+  }
   refreshTopbar();
+  renderChapterTabs();
   renderSeasonMap();
 }
 
 // ==================== MỞ MÀN CHƠI + BÙA ĐẦU TRẬN & CỐC LỬA (BRIEFING) ====================
 function getObjectiveVisual(obj) {
   if (obj.type === 'boss') {
-    return { icon: OBSTACLE_ICONS.boss, name: obj.bossName || 'Hạ Đại Trùm' };
+    return { icon: OBSTACLE_ICONS.boss, name: obj.label || obj.bossName || 'Hạ Đại Trùm' };
+  }
+  if (obj.type === 'horcrux') {
+    return { icon: OBSTACLE_ICONS.horcrux, name: 'Linh Giá' };
+  }
+  if (obj.type === 'dementor') {
+    return { icon: OBSTACLE_ICONS.dementor, name: 'Giám Ngục' };
+  }
+  if (obj.type === 'decree') {
+    return { icon: OBSTACLE_ICONS.decree, name: 'Bia Sắc Lệnh' };
+  }
+  if (obj.type === 'fiendfyre') {
+    return { icon: OBSTACLE_ICONS.fiendfyre, name: 'Lửa Địa Ngục' };
+  }
+  if (obj.type === 'petrify') {
+    return { icon: OBSTACLE_ICONS.petrify, name: 'Hoá Đá Tử Xà' };
   }
   if (obj.type === 'cauldron') {
     return { icon: OBSTACLE_ICONS.cauldron, name: 'Vạc Độc Dược' };
@@ -523,6 +772,7 @@ function formatBriefingTarget(obj) {
   if (obj.type === 'boss') return `${obj.target.toLocaleString('vi-VN')} HP`;
   if (obj.type === 'score') return `${obj.target.toLocaleString('vi-VN')} đ`;
   if (obj.type === 'chocolate') return 'Diệt sạch';
+  if (obj.type === 'fiendfyre') return 'Dập sạch';
   return `×${obj.target}`;
 }
 
@@ -533,6 +783,10 @@ function formatArenaRemaining(obj) {
   return `Còn ${obj.remaining}`;
 }
 
+function gridHasPositive(grid) {
+  return Array.isArray(grid) && grid.some((row) => Array.isArray(row) && row.some((v) => v > 0));
+}
+
 function openLevelBriefing(levelId) {
   const lvl = getLevelById(levelId);
   pendingBriefingLevelId = lvl.id;
@@ -540,19 +794,28 @@ function openLevelBriefing(levelId) {
   const house = HOUSES[player?.house] || HOUSES.gryffindor;
   const saved = player?.levelProgress?.[lvl.id];
   const streak = player?.winStreak || 0;
+  const diffBadge = getDifficultyBadgeMeta(lvl.difficultyTier);
 
-  document.getElementById('briefing-kicker').textContent = `CHƯƠNG ${lvl.chapterId} • MÀN ${lvl.id}${lvl.isBoss ? ' • ĐẠI TRÙM' : ''}`;
+  document.getElementById('briefing-kicker').textContent =
+    `NĂM ${lvl.seasonId} • CHƯƠNG ${lvl.chapterIndexInSeason}/11 • ${diffBadge.icon} ${diffBadge.label}`;
   document.getElementById('briefing-title').textContent = `Màn ${lvl.id}: ${lvl.title}`;
 
   const badges = [
-    `<span class="chip">🍬 Khay ${lvl.size}×${lvl.size}</span>`,
+    `<span class="chip diff-tier-chip ${diffBadge.cssClass}">${diffBadge.icon} ${escapeHtml(diffBadge.shortLabel)}</span>`,
+    `<span class="chip">🍬 Khay ${lvl.size}×${lvl.size} (${lvl.numColors} màu)</span>`,
     `<span class="chip">🎯 ${lvl.moves} Lượt</span>`,
     `<span class="chip"><span class="coin-dot">G</span> +${lvl.rewardGalleons}</span>`
   ];
-  if (lvl.bossConfig) badges.push(`<span class="chip">${lvl.bossConfig.emoji} ${escapeHtml(lvl.bossConfig.shortTitle)}</span>`);
+  if (lvl.bossConfig) badges.push(`<span class="chip">${lvl.bossConfig.emoji} ${escapeHtml(lvl.bossConfig.shortTitle)} (2 Pha)</span>`);
+  if (gridHasPositive(lvl.horcruxGrid)) badges.push('<span class="chip">💀 Linh Giá (Khiên Hồn)</span>');
+  if (gridHasPositive(lvl.fiendfyreGrid)) badges.push('<span class="chip">🔥 Lửa Fiendfyre</span>');
+  if (gridHasPositive(lvl.decreeGrid)) badges.push('<span class="chip">📜 Bia Cấm Phép 3×3</span>');
+  if (lvl.mazeConfig?.rows?.length > 0) badges.push('<span class="chip">🌪️ Gió Lốc Mê Cung</span>');
+  if (gridHasPositive(lvl.dementorGrid)) badges.push('<span class="chip">👻 Giám Ngục Hút Nộ</span>');
+  if (gridHasPositive(lvl.petrifyGrid)) badges.push('<span class="chip">🐍 Hoá Đá Tử Xà</span>');
   if (lvl.conveyorLoops?.length > 0) badges.push('<span class="chip">🔄 Băng Chuyền</span>');
-  if (lvl.objectives.some((o) => o.type === 'cauldron')) badges.push('<span class="chip">🧪 Vạc Độc Dược</span>');
-  if (lvl.objectives.some((o) => o.type === 'key_lock')) badges.push('<span class="chip">🗝️ Khoá Gringotts</span>');
+  if (gridHasPositive(lvl.cauldronGrid)) badges.push('<span class="chip">🧪 Vạc Độc Dược</span>');
+  if (gridHasPositive(lvl.lockGrid)) badges.push('<span class="chip">🗝️ Khoá Gringotts</span>');
   if (lvl.portals?.length > 0) badges.push('<span class="chip">🌀 Lò Sưởi Floo</span>');
   if (lvl.bombConfig) badges.push('<span class="chip">💣 Có Bom Hẹn Giờ</span>');
   if (saved?.highScore) {
@@ -573,7 +836,7 @@ function openLevelBriefing(levelId) {
       const vis = getObjectiveVisual(obj);
       return `
         <div class="obj-pill">
-          <span class="obj-icon">${vis.icon}</span>
+          <span class="obj-icon" aria-hidden="true">${vis.icon}</span>
           <div class="obj-info">
             <strong>${formatBriefingTarget(obj)}</strong>
             <small>${escapeHtml(vis.name)}</small>
@@ -591,7 +854,7 @@ function openLevelBriefing(levelId) {
     return `
       <label class="prebooster-card" data-pre-id="${pb.id}" title="${escapeHtml(pb.desc)}">
         <input type="checkbox" class="prebooster-check" value="${pb.id}" />
-        <span class="prebooster-icon">${pb.iconSvg}</span>
+        <span class="prebooster-icon" aria-hidden="true">${pb.iconSvg}</span>
         <span class="prebooster-name">${escapeHtml(pb.shortName)}</span>
         <span class="prebooster-qty" data-pre-qty="${pb.id}">${qty > 0 ? `Có: ${qty}` : `${price} G`}</span>
       </label>
@@ -706,7 +969,10 @@ function renderGameHud({
   house = 'gryffindor',
   bossState = null
 }) {
-  document.getElementById('game-level-num').textContent = `CHƯƠNG ${level.chapterId} • MÀN ${level.id}`;
+  const diffBadge = getDifficultyBadgeMeta(level.difficultyTier);
+  const spikePrefix = level.difficultyTier && level.difficultyTier !== 'normal' ? `${diffBadge.icon} ` : '';
+  document.getElementById('game-level-num').textContent =
+    `${spikePrefix}NĂM ${level.seasonId} • CH.${level.chapterIndexInSeason} • MÀN ${level.id}`;
   document.getElementById('game-level-title').textContent = level.title;
   document.getElementById('game-moves-left').textContent = String(movesLeft);
   document.getElementById('game-score').textContent = score.toLocaleString('vi-VN');
@@ -721,19 +987,23 @@ function renderGameHud({
   const bossStrip = document.getElementById('boss-hud-strip');
   if (bossStrip) {
     if (bossState) {
+      const isEnragedLive = Boolean(bossState.enraged && !bossState.defeated);
       bossStrip.hidden = false;
       bossStrip.classList.toggle('defeated', Boolean(bossState.defeated));
-      document.getElementById('boss-hud-label').textContent = `${bossState.emoji} ${bossState.shortTitle}`;
+      bossStrip.classList.toggle('enraged', isEnragedLive);
+      document.getElementById('boss-hud-label').textContent =
+        `${isEnragedLive ? '🔥' : bossState.emoji} ${bossState.shortTitle}`;
       const bossProg = document.getElementById('boss-hp-progress');
       bossProg.max = bossState.maxHp;
       bossProg.value = Math.max(0, bossState.hp);
       bossProg.classList.toggle('is-defeated', Boolean(bossState.defeated));
+      bossProg.classList.toggle('is-enraged', isEnragedLive);
       document.getElementById('boss-hud-meta').textContent = bossState.defeated
         ? '✓ Hạ gục!'
-        : `${bossState.hp} HP • Bùa ${bossState.turnsUntilHex}L`;
+        : `${bossState.hp.toLocaleString('vi-VN')} HP • Bùa ${bossState.turnsUntilHex}L`;
     } else {
       bossStrip.hidden = true;
-      bossStrip.classList.remove('defeated');
+      bossStrip.classList.remove('defeated', 'enraged');
     }
   }
 
@@ -759,7 +1029,7 @@ function renderGameHud({
       const vis = getObjectiveVisual(obj);
       return `
         <div class="obj-pill ${obj.completed ? 'done' : ''}">
-          <span class="obj-icon">${vis.icon}</span>
+          <span class="obj-icon" aria-hidden="true">${vis.icon}</span>
           <div class="obj-info">
             <strong>${formatArenaRemaining(obj)}</strong>
             <small>${escapeHtml(vis.name)}</small>
@@ -854,7 +1124,13 @@ function handleGameEnd({ won, failReason, levelId, score, stars, frogsCleared = 
 
     const housePts = Math.max(5, Math.round(score / 100) + stars * 2);
     document.getElementById('result-badge').textContent =
-      levelId === 100 ? '🏆 PHÁ ĐẢO SEASON 1!' : `BERTIE CRUSH! • MÀN ${levelId}`;
+      levelId === TOTAL_LEVELS
+        ? '🏆 PHÁ ĐẢO ĐẠI CHIẾN HOGWARTS 7.777!'
+        : lvl.isSeasonFinale
+          ? `🏆 TỐT NGHIỆP NĂM ${lvl.seasonId} HOGWARTS!`
+          : reward.unlockedNewSeason
+            ? `🎓 ĐỖ KHẢO HẠCH MỞ NĂM ${reward.unlockedNewSeason}!`
+            : `BERTIE CRUSH! • MÀN ${levelId}`;
     document.getElementById('result-title').textContent =
       stars === 3 ? 'Hogwarts! Ngọt Ngào Thần Sầu!' : stars === 2 ? 'Honeydukes! Quá Xuất Sắc!' : 'Magical! Vượt Màn Thành Công!';
 
@@ -864,7 +1140,7 @@ function handleGameEnd({ won, failReason, levelId, score, stars, frogsCleared = 
         <div class="dropped-card-showcase">
           ${reward.droppedCard.card.portraitSvg}
           <div>
-            <strong>🃏 ${reward.droppedCard.isNew ? 'THẺ ẾCH MỚI:' : 'THẺ ẾCH TRÙNG (+25 G):'} ${escapeHtml(reward.droppedCard.card.name)} (${escapeHtml(reward.droppedCard.card.number)})</strong>
+            <strong>🃏 ${reward.droppedCard.isNew ? 'THẺ ẾCH MỚI:' : `THẺ ẾCH TRÙNG (+${reward.droppedCard.duplicateGalleons} G):`} ${escapeHtml(reward.droppedCard.card.name)} (${escapeHtml(reward.droppedCard.card.number)})</strong>
             <small>${escapeHtml(reward.droppedCard.card.buffLabel)}</small>
           </div>
         </div>
@@ -876,41 +1152,47 @@ function handleGameEnd({ won, failReason, levelId, score, stars, frogsCleared = 
       <div>Thưởng Vàng Galleon: <strong style="color:#fcd34d">+${reward.galleonsEarned} G</strong></div>
       <div>Chuỗi Thắng Cốc Lửa: <strong style="color:#fb923c">🔥 Bậc ×${reward.newStreak}/3</strong></div>
       <div>Góp vào Cúp Nhà <strong>${escapeHtml(house.name)}</strong>: <strong style="color:#34d399">+${housePts} Điểm</strong></div>
-      ${bonusBoosterMeta ? `<div style="margin-top:0.35rem;color:#c084fc">🎁 Quà Trùm: +1 ${escapeHtml(bonusBoosterMeta.name)}!</div>` : ''}
+      ${reward.unlockedNewSeason ? `<div style="margin-top:0.35rem;color:#34d399;font-weight:900">🎓 Mở khoá chính thức ${escapeHtml(HOGWARTS_SEASONS[reward.unlockedNewSeason - 1].fullTitle)}!</div>` : ''}
+      ${reward.bonusInfiniteMinutes > 0 ? `<div style="margin-top:0.3rem;color:#fde047">❤️‍🔥 Bất Tử Tim: +${reward.bonusInfiniteMinutes} phút!</div>` : ''}
+      ${reward.wandRankUp ? `<div style="margin-top:0.3rem;color:#f9a8d4">🪄 Thăng Cấp Đũa Phép Bậc ${reward.wandRankUp.rank}: ${escapeHtml(reward.wandRankUp.title)}!</div>` : ''}
+      ${bonusBoosterMeta ? `<div style="margin-top:0.3rem;color:#c084fc">🎁 Quà Trùm: +1 ${escapeHtml(bonusBoosterMeta.name)}!</div>` : ''}
       ${droppedCardHtml}
     `;
 
-    const hasNext = levelId < 100;
+    const hasNext = levelId < TOTAL_LEVELS && canPlayLevel(levelId + 1);
     actionsEl.innerHTML = `
       ${hasNext ? `<button type="button" class="candy-cta-btn cta-pink" id="res-btn-next">▶ Sang Màn ${levelId + 1}</button>` : ''}
-      ${reward.droppedCard ? `<button type="button" class="candy-cta-btn cta-green" id="res-btn-album">🃏 Mở Album Thẻ Ếch</button>` : `<button type="button" class="candy-cta-btn cta-green" id="res-btn-leaderboard">🏆 Xem BXH & Cúp Nhà</button>`}
-      <button type="button" class="candy-cta-btn cta-blue" id="res-btn-map">🗺️ Về Bản Đồ Season 1</button>
+      ${reward.droppedCard || reward.wandRankUp ? `<button type="button" class="candy-cta-btn cta-green" id="res-btn-album">🃏 Mở Album &amp; Đũa Phép</button>` : `<button type="button" class="candy-cta-btn cta-green" id="res-btn-leaderboard">🏆 Xem BXH &amp; Cúp Nhà</button>`}
+      <button type="button" class="candy-cta-btn cta-blue" id="res-btn-map">🗺️ Về Bản Đồ Năm ${lvl.seasonId}</button>
     `;
 
     openModal(resultDialog);
 
     document.getElementById('res-btn-next')?.addEventListener('click', async () => {
       await closeTopLayer(resultDialog);
+      syncMapFocusToLevel(levelId + 1);
       launchLevel(levelId + 1);
     });
     document.getElementById('res-btn-album')?.addEventListener('click', async () => {
       await closeTopLayer(resultDialog);
-      switchToMapView();
+      switchToMapView(levelId);
       openAlbumModal();
     });
     document.getElementById('res-btn-leaderboard')?.addEventListener('click', async () => {
       await closeTopLayer(resultDialog);
-      switchToMapView();
+      switchToMapView(levelId);
       openLeaderboardModal();
     });
     document.getElementById('res-btn-map')?.addEventListener('click', async () => {
       await closeTopLayer(resultDialog);
-      switchToMapView();
+      switchToMapView(hasNext ? levelId + 1 : levelId);
     });
   } else {
     const extraCount = player?.boosters?.extraMoves || 0;
     const extraPrice = storage.getDiscountedPrice(140, player);
     const isBombFail = failReason === 'bomb';
+    const infHearts = storage.isInfiniteHeartsActive(player);
+    const heartCostLabel = infHearts ? '(❤️‍🔥 Tim ∞)' : '(-1 ❤️)';
     document.getElementById('result-badge').textContent = isBombFail
       ? `MÀN ${levelId} • BOM PHÁT NỔ!`
       : `MÀN ${levelId} • HẾT LƯỢT`;
@@ -928,8 +1210,8 @@ function handleGameEnd({ won, failReason, levelId, score, stars, frogsCleared = 
       <button type="button" class="candy-cta-btn cta-green" id="res-btn-continue">
         🍬 Tiếp Tục +5 Lượt ${extraCount > 0 ? `(Còn ${extraCount})` : `(${extraPrice} G)`}
       </button>
-      <button type="button" class="candy-cta-btn cta-pink" id="res-btn-retry">🔄 Chơi Lại (-1 ❤️)</button>
-      <button type="button" class="candy-cta-btn cta-blue" id="res-btn-map-fail">🗺️ Về Bản Đồ (-1 ❤️)</button>
+      <button type="button" class="candy-cta-btn cta-pink" id="res-btn-retry">🔄 Chơi Lại ${heartCostLabel}</button>
+      <button type="button" class="candy-cta-btn cta-blue" id="res-btn-map-fail">🗺️ Về Bản Đồ ${heartCostLabel}</button>
     `;
 
     openModal(resultDialog);
@@ -955,14 +1237,14 @@ function handleGameEnd({ won, failReason, levelId, score, stars, frogsCleared = 
       if (ensureHeartBeforeLaunch()) {
         openLevelBriefing(levelId);
       } else {
-        switchToMapView();
+        switchToMapView(levelId);
       }
     });
 
     document.getElementById('res-btn-map-fail')?.addEventListener('click', async () => {
       storage.loseHeartAndStreak();
       await closeTopLayer(resultDialog);
-      switchToMapView();
+      switchToMapView(levelId);
     });
   }
 }
@@ -1173,9 +1455,12 @@ function renderSavedPlayersSwitcher() {
         selectedHouseInModal = HOUSES[switched.house] ? switched.house : 'gryffindor';
         renderHouseChoices();
         renderSavedPlayersSwitcher();
+        const frontier = storage.getHighestUnlockedLevel(switched);
         if (!viewGame.hidden) {
-          switchToMapView();
+          switchToMapView(frontier);
         } else {
+          syncMapFocusToLevel(frontier);
+          renderChapterTabs();
           refreshTopbar();
           renderSeasonMap();
         }
@@ -1247,8 +1532,16 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
   setDialogLocked(profileDialog, false);
 
   sound.playSortingHat();
-  if (wasCreatingNew && !viewGame.hidden) {
-    switchToMapView();
+  if (wasCreatingNew) {
+    const frontier = storage.getHighestUnlockedLevel(saved);
+    if (!viewGame.hidden) {
+      switchToMapView(frontier);
+    } else {
+      syncMapFocusToLevel(frontier);
+      renderChapterTabs();
+      refreshTopbar();
+      renderSeasonMap();
+    }
   } else {
     refreshTopbar();
     renderSeasonMap();
@@ -1452,8 +1745,15 @@ saveImportInput.addEventListener('change', async () => {
       return;
     }
     sound.playColorBomb();
-    refreshTopbar();
-    renderSeasonMap();
+    const frontier = storage.getHighestUnlockedLevel();
+    if (!viewGame.hidden) {
+      switchToMapView(frontier);
+    } else {
+      syncMapFocusToLevel(frontier);
+      renderChapterTabs();
+      refreshTopbar();
+      renderSeasonMap();
+    }
     renderLeaderboardContent();
     showToast(`Đã nạp thành công dữ liệu của ${res.count} Phù Thủy!`);
   } catch {
@@ -1462,7 +1762,7 @@ saveImportInput.addEventListener('change', async () => {
   }
 });
 
-// ==================== TIỆM KẸO CÔNG TƯỚC MẬT, HƯỚNG DẪN & ALBUM THẺ ẾCH ====================
+// ==================== TIỆM KẸO CÔNG TƯỚC MẬT, HƯỚNG DẪN & ALBUM 21 THẺ ẾCH ====================
 function renderShopItems() {
   const player = storage.getActivePlayer();
   document.getElementById('shop-galleons').textContent = String(player ? player.galleons : 0);
@@ -1470,16 +1770,30 @@ function renderShopItems() {
   const preInv = player?.preBoosters || {};
   const hs = storage.syncHearts(player);
   const heartPrice = storage.getDiscountedPrice(100, player);
+  const infPrice = storage.getDiscountedPrice(160, player);
+
+  const infiniteHeartRowHtml = `
+    <div class="shop-row">
+      <span class="booster-icon" style="font-size:1.75rem" aria-hidden="true">❤️‍🔥</span>
+      <div class="shop-row-info">
+        <strong>Bình Phúc Lạc Tim Bất Tử 30 Phút ${hs.isInfinite ? `(Đang còn ${formatTimerSec(hs.infiniteRemainingSec)})` : ''}</strong>
+        <small>Không tốn Tim khi thử sức các Màn Khó, Ác Mộng, Thi Vượt Năm O.W.L. &amp; Đại Trùm 2 Pha (cộng dồn tối đa 24h)!</small>
+      </div>
+      <button type="button" class="candy-pill-btn btn-candy-green" id="btn-shop-infinite-hearts">
+        ${infPrice} G
+      </button>
+    </div>
+  `;
 
   const heartRowHtml = `
     <div class="shop-row">
-      <span class="booster-icon" style="font-size:1.75rem">❤️</span>
+      <span class="booster-icon" style="font-size:1.75rem" aria-hidden="true">❤️</span>
       <div class="shop-row-info">
-        <strong>Nạp Đầy 5/5 Tim Phép Thuật (Đang có: ${hs.hearts}/${MAX_HEARTS})</strong>
+        <strong>Nạp Đầy 5/5 Tim Phép Thuật (Đang có: ${hs.isInfinite ? '∞' : `${hs.hearts}/${MAX_HEARTS}`})</strong>
         <small>Hồi đầy 5 Tim ngay lập tức (hoặc nhận +3 Tim cứu trợ miễn phí từ Bà Pomfrey khi cạn sạch).</small>
       </div>
-      <button type="button" class="candy-pill-btn btn-candy-pink" id="btn-shop-refill-hearts" ${hs.hearts >= MAX_HEARTS ? 'disabled' : ''}>
-        ${hs.hearts >= MAX_HEARTS ? 'Đầy' : `${heartPrice} G`}
+      <button type="button" class="candy-pill-btn btn-candy-pink" id="btn-shop-refill-hearts" ${hs.isInfinite || hs.hearts >= MAX_HEARTS ? 'disabled' : ''}>
+        ${hs.isInfinite ? 'Tim ∞' : hs.hearts >= MAX_HEARTS ? 'Đầy' : `${heartPrice} G`}
       </button>
     </div>
   `;
@@ -1488,7 +1802,7 @@ function renderShopItems() {
     const price = storage.getDiscountedPrice(pb.price, player);
     return `
       <div class="shop-row">
-        <span class="booster-icon">${pb.iconSvg}</span>
+        <span class="booster-icon" aria-hidden="true">${pb.iconSvg}</span>
         <div class="shop-row-info">
           <strong>[Đầu Trận] ${escapeHtml(pb.name)} (Có: ${preInv[pb.id] || 0})</strong>
           <small>${escapeHtml(pb.desc)}</small>
@@ -1504,7 +1818,7 @@ function renderShopItems() {
     const price = storage.getDiscountedPrice(b.price, player);
     return `
       <div class="shop-row">
-        <span class="booster-icon">${b.iconSvg}</span>
+        <span class="booster-icon" aria-hidden="true">${b.iconSvg}</span>
         <div class="shop-row-info">
           <strong>${escapeHtml(b.name)} (Có: ${inv[b.id] || 0})</strong>
           <small>${escapeHtml(b.desc)}</small>
@@ -1517,7 +1831,20 @@ function renderShopItems() {
   }).join('');
 
   const container = document.getElementById('shop-items-list');
-  container.innerHTML = heartRowHtml + preRowsHtml + inGameRowsHtml;
+  container.innerHTML = infiniteHeartRowHtml + heartRowHtml + preRowsHtml + inGameRowsHtml;
+
+  document.getElementById('btn-shop-infinite-hearts')?.addEventListener('click', () => {
+    const res = storage.buyInfiniteHearts(30, 160);
+    if (!res.ok) {
+      sound.playInvalid();
+      showToast(res.reason);
+      return;
+    }
+    sound.playColorBomb();
+    refreshTopbar();
+    renderShopItems();
+    showToast(res.msg);
+  });
 
   document.getElementById('btn-shop-refill-hearts')?.addEventListener('click', () => {
     const res = storage.refillHearts();
@@ -1566,7 +1893,7 @@ function renderShopItems() {
   });
 }
 
-function setGuideActiveTab(tab = 'shop') {
+function setGuideActiveTab(tab = 'shop', focusActiveTab = false) {
   const container = document.getElementById('guide-grid-container');
   const btnShop = document.getElementById('tab-guide-shop');
   const btnRules = document.getElementById('tab-guide-rules');
@@ -1577,10 +1904,14 @@ function setGuideActiveTab(tab = 'shop') {
   if (btnShop) {
     btnShop.classList.toggle('active', isShop);
     btnShop.setAttribute('aria-selected', isShop ? 'true' : 'false');
+    btnShop.setAttribute('tabindex', isShop ? '0' : '-1');
+    if (focusActiveTab && isShop) btnShop.focus();
   }
   if (btnRules) {
     btnRules.classList.toggle('active', !isShop);
     btnRules.setAttribute('aria-selected', !isShop ? 'true' : 'false');
+    btnRules.setAttribute('tabindex', !isShop ? '0' : '-1');
+    if (focusActiveTab && !isShop) btnRules.focus();
   }
 }
 
@@ -1600,6 +1931,18 @@ document.getElementById('tab-guide-rules')?.addEventListener('click', () => {
   setGuideActiveTab('rules');
 });
 
+document.getElementById('guide-tabs')?.addEventListener('keydown', (e) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const container = document.getElementById('guide-grid-container');
+  const cur = container?.dataset.activeTab === 'rules' ? 'rules' : 'shop';
+  let next = cur === 'shop' ? 'rules' : 'shop';
+  if (e.key === 'Home') next = 'shop';
+  else if (e.key === 'End') next = 'rules';
+  sound.playSelect();
+  setGuideActiveTab(next, true);
+});
+
 document.getElementById('btn-open-guide')?.addEventListener('click', () => {
   sound.playSelect();
   openGuideAndShop('shop');
@@ -1612,9 +1955,26 @@ document.getElementById('btn-open-shop')?.addEventListener('click', () => {
 
 function renderAlbumModal() {
   const player = storage.getActivePlayer();
+  const stats = player ? storage.getPlayerStats(player) : { stars: 0 };
   const buffs = storage.getCollectionBuffs(player);
   const ownedMap = player?.frogCards || {};
   const frogsProgress = (player?.totalFrogsCleared || 0) % 40;
+
+  const wandBanner = document.getElementById('wand-mastery-banner');
+  if (wandBanner) {
+    const nextHint = buffs.wandNextTier
+      ? `Cần ${buffs.wandNextTier.minStars.toLocaleString('vi-VN')} ★ tới Bậc ${buffs.wandNextTier.rank} (${escapeHtml(buffs.wandNextTier.title)})`
+      : 'Đã đạt cảnh giới Đũa Phép Cơm Nguội Tối Thượng!';
+    wandBanner.innerHTML = `
+      <div class="wand-mastery-top">
+        <strong>🪄 Tinh Thông Đũa Phép Bậc ${buffs.wandRank}/7: ${escapeHtml(buffs.wandTitle)}</strong>
+        <span>★ Đang có: ${stats.stars.toLocaleString('vi-VN')} ★</span>
+      </div>
+      <div class="wand-mastery-sub">
+        Nội tại Đũa Phép: <strong>+${buffs.wandScoreBonusPct}% Điểm Kẹo</strong> • <strong>+${buffs.wandBossDamagePct}% Sát Thương Trùm</strong> — ${nextHint}
+      </div>
+    `;
+  }
 
   document.getElementById('album-count-heading').textContent =
     `Đã sưu tầm: ${buffs.uniqueCount} / ${buffs.totalCards} Thẻ Danh Nhân`;
@@ -1627,14 +1987,15 @@ function renderAlbumModal() {
 
   const activeBuffParts = [];
   if (buffs.scoreBonusPct > 0) activeBuffParts.push(`+${buffs.scoreBonusPct}% Điểm Kẹo`);
+  if (buffs.bossDamageBonusPct > 0) activeBuffParts.push(`+${buffs.bossDamageBonusPct}% Sát Thương Trùm`);
   if (buffs.patronusBonusPct > 0) activeBuffParts.push(`+${buffs.patronusBonusPct}% Nạp Hộ Mệnh`);
   if (buffs.shopDiscountPct > 0) activeBuffParts.push(`-${buffs.shopDiscountPct}% Giá Tiệm`);
   if (buffs.bonusClearGalleons > 0) activeBuffParts.push(`+${buffs.bonusClearGalleons} G/màn thắng`);
 
   document.getElementById('album-buffs-summary').textContent =
     activeBuffParts.length > 0
-      ? `✨ Cộng hưởng Thẻ đang kích hoạt: ${activeBuffParts.join(' • ')}`
-      : 'Sưu tầm Thẻ Ếch từ Màn Trùm (10..100), Rương 60★ Chương, mỗi 40 Ếch Sô-cô-la bắt được hoặc thắng 3★ lần đầu để cộng chỉ số vĩnh viễn!';
+      ? `✨ Tổng Cộng Hưởng (Thẻ Ếch + Đũa Phép): ${activeBuffParts.join(' • ')}`
+      : 'Sưu tầm 21 Thẻ Ếch từ Màn Trùm, Rương Sao Chương cuối, mỗi 40 Ếch Sô-cô-la bắt được hoặc thắng 3★ lần đầu để cộng chỉ số vĩnh viễn!';
 
   document.getElementById('frog-cards-grid').innerHTML = CHOCOLATE_FROG_CARDS.map((card) => {
     const copies = ownedMap[card.id] || 0;
@@ -1650,7 +2011,7 @@ function renderAlbumModal() {
           <h3>${owned ? escapeHtml(card.name) : 'Thẻ Bí Ẩn Chưa Mở'}</h3>
         </header>
         <div class="frog-card-content">
-          <p class="frog-card-bio">${owned ? escapeHtml(card.lore) : 'Vượt Màn Trùm, mở Rương 60★ Chương, bắt đủ 40 Ếch Sô-cô-la hoặc thắng 3★ lần đầu để mở khoá!'}</p>
+          <p class="frog-card-bio">${owned ? escapeHtml(card.lore) : 'Vượt Màn Trùm, mở Rương Sao Chương cuối, bắt đủ 40 Ếch Sô-cô-la hoặc thắng 3★ lần đầu để mở khoá!'}</p>
           <p class="frog-card-buff">${owned ? '✨ ' : '🔒 '}${escapeHtml(card.buffLabel)}</p>
         </div>
       </article>
@@ -1674,20 +2035,34 @@ document.getElementById('btn-map-album')?.addEventListener('click', () => {
 });
 
 // ==================== KHỞI ĐỘNG ====================
+syncMapFocusToLevel(storage.getHighestUnlockedLevel());
 renderChapterTabs();
 refreshTopbar();
 renderSeasonMap();
 drawDailyWheelCanvas();
 
 const urlParams = new URLSearchParams(window.location.search);
-const directLevel = Number(urlParams.get('level'));
+const rawDirectLevel = Number(urlParams.get('level'));
+const directLevel = Number.isFinite(rawDirectLevel) ? Math.floor(rawDirectLevel) : NaN;
 
-if (directLevel >= 1 && directLevel <= 100) {
+if (directLevel >= 1 && directLevel <= TOTAL_LEVELS) {
   if (!storage.getActivePlayer()) {
     storage.registerOrUpdateActivePlayer('Phù Thủy Kẹo Ngọt', 'gryffindor', true);
     refreshTopbar();
   }
-  launchLevel(directLevel);
+  syncMapFocusToLevel(directLevel);
+  renderChapterTabs();
+  renderSeasonMap();
+  if (canPlayLevel(directLevel)) {
+    launchLevel(directLevel);
+  } else {
+    requestAnimationFrame(() => {
+      document.getElementById(`map-node-${directLevel}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    const s = getSeasonByLevel(directLevel);
+    const examHint = s.examLevelId ? ` hoặc vượt Khảo Hạch O.W.L. Màn ${s.examLevelId}` : '';
+    showToast(`🔒 Màn ${directLevel} chưa mở khoá! Hãy vượt tuần tự${examHint} hoặc bật Mở Thử 7.777 Màn.`);
+  }
 } else if (!storage.getActivePlayer()) {
   openProfileModal(true, true);
 }
