@@ -599,6 +599,8 @@ h3,
   .app-shell:has(#view-game:not([hidden])) .topbar :is(
     .brand,
     #btn-open-profile,
+    #btn-open-wheel,
+    #btn-open-album,
     #btn-open-leaderboard,
     #btn-open-guide,
     .chip-star
@@ -618,15 +620,18 @@ h3,
     white-space: nowrap;
   }
 
+  .app-shell:has(#view-game:not([hidden])) .topbar #btn-toggle-bgm {
+    margin-left: auto;
+  }
+
   .app-shell:has(#view-game:not([hidden])) .topbar :is(
-    #btn-open-wheel,
     #btn-toggle-bgm,
     #btn-toggle-sound
   ) {
     width: auto;
-    min-width: 34px;
-    min-height: 30px;
-    padding: 0.18rem 0.42rem;
+    min-width: 36px;
+    min-height: 32px;
+    padding: 0.2rem 0.45rem;
   }
 
   @supports not selector(:has(*)) {
@@ -639,11 +644,15 @@ h3,
       padding: 0.22rem 0.45rem;
       border-radius: 999px;
     }
-    .app-shell.is-playing .topbar .brand,
-    .app-shell.is-playing .topbar #btn-open-profile,
-    .app-shell.is-playing .topbar #btn-open-leaderboard,
-    .app-shell.is-playing .topbar #btn-open-guide,
-    .app-shell.is-playing .topbar .chip-star {
+    .app-shell.is-playing .topbar :is(
+      .brand,
+      #btn-open-profile,
+      #btn-open-wheel,
+      #btn-open-album,
+      #btn-open-leaderboard,
+      #btn-open-guide,
+      .chip-star
+    ) {
       display: none;
     }
     .app-shell.is-playing .topbar .btn-label-mobile {
@@ -657,12 +666,13 @@ h3,
       border: 0;
       white-space: nowrap;
     }
-    .app-shell.is-playing .topbar #btn-open-wheel,
-    .app-shell.is-playing .topbar #btn-toggle-bgm,
-    .app-shell.is-playing .topbar #btn-toggle-sound {
+    .app-shell.is-playing .topbar #btn-toggle-bgm {
+      margin-left: auto;
+    }
+    .app-shell.is-playing .topbar :is(#btn-toggle-bgm, #btn-toggle-sound) {
       width: auto;
-      min-width: 34px;
-      min-height: 30px;
+      min-width: 36px;
+      min-height: 32px;
       padding: 0.18rem 0.42rem;
     }
   }
@@ -693,6 +703,7 @@ h3,
   scroll-snap-type: x proximity;
   padding-bottom: 4px;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chapter-tabs::-webkit-scrollbar {
@@ -732,6 +743,7 @@ h3,
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 0.65rem 0.9rem calc(2.2rem + env(safe-area-inset-bottom, 0px));
   scroll-behavior: smooth;
 }
@@ -1051,6 +1063,7 @@ h3,
   container-type: inline-size;
   padding: 0.45rem 0.8rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {
@@ -1590,6 +1603,7 @@ h3,
     flex-wrap: nowrap;
     gap: 0.3rem;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
 
@@ -1864,6 +1878,7 @@ dialog::backdrop {
     0 24px 56px rgba(0, 0, 0, 0.85);
   max-height: 86dvh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Mobile Màn Dọc (<= 600px): Trình bày hộp thoại dạng Bottom-Sheet sát vùng ngón cái, trượt mượt từ đáy màn hình */
@@ -1926,18 +1941,31 @@ dialog::backdrop {
 
 .close-x {
   position: absolute;
-  top: 1.35rem;
-  right: 1.35rem;
-  width: 36px;
-  height: 36px;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid #fde047;
   background: linear-gradient(180deg, #334155, #0f172a);
   box-shadow: 0 3px 0 #020617;
   color: #fef3c7;
   font-weight: 900;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: transform 0.12s ease;
+}
+
+.close-x:hover {
+  transform: scale(1.06);
+}
+
+.close-x:active {
+  transform: scale(0.94);
 }
 
 .dialog-lead {
@@ -1953,16 +1981,17 @@ dialog::backdrop {
 
 @media (max-width: 600px) {
   .dialog-ribbon {
-    padding: 0.5rem 2.3rem 0.5rem 0.75rem;
+    padding: 0.5rem 2.6rem 0.5rem 0.75rem;
     margin-bottom: 0.68rem;
     border-radius: 16px;
   }
 
   .close-x {
-    top: 1rem;
-    right: 1rem;
-    width: 38px;
-    height: 38px;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 44px;
+    height: 44px;
+    font-size: 1.15rem;
   }
 
   .dialog-lead {
@@ -2516,6 +2545,7 @@ dialog::backdrop {
 
 .lb-table-wrap {
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   max-inline-size: 100%;
   max-block-size: min(420px, 50dvh);
   container-type: inline-size;
@@ -2669,6 +2699,50 @@ dialog::backdrop {
 }
 
 /* ==================== HƯỚNG DẪN COMBO & TIỆM CÔNG TƯỚC MẬT ==================== */
+.guide-tabs {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .guide-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .guide-tab-btn {
+    flex: 1;
+    max-width: 200px;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    border: 2px solid rgba(201, 147, 44, 0.65);
+    background: var(--card-surface);
+    color: var(--text-parchment);
+    font-family: 'Fredoka', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  }
+
+  .guide-tab-btn.active {
+    background: linear-gradient(180deg, #b91c1c 0%, #6b0f1a 100%);
+    border-color: #fde047;
+    color: #ffffff;
+    box-shadow: 0 3px 0 #38060c, 0 0 12px rgba(245, 158, 11, 0.35);
+  }
+
+  .guide-grid[data-active-tab="shop"] #guide-section-rules {
+    display: none;
+  }
+
+  .guide-grid[data-active-tab="rules"] #guide-section-shop {
+    display: none;
+  }
+}
+
 .guide-grid {
   display: grid;
   grid-template-columns: 1.15fr 1fr;

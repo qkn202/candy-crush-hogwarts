@@ -264,6 +264,39 @@ function renderChapterTabs() {
   });
 }
 
+let mapScrollObserver = null;
+
+function setupMapScrollObserver() {
+  if (mapScrollObserver) {
+    mapScrollObserver.disconnect();
+    mapScrollObserver = null;
+  }
+  const scrollContainer = document.getElementById('map-scroll-container');
+  if (!scrollContainer || !('IntersectionObserver' in window)) return;
+  const sections = scrollContainer.querySelectorAll('.chapter-banner-card');
+  if (!sections.length) return;
+
+  mapScrollObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const match = entry.target.id?.match(/chapter-sec-(\d+)/);
+          if (match) {
+            setActiveChapterTab(match[1]);
+          }
+        }
+      }
+    },
+    {
+      root: scrollContainer,
+      rootMargin: '-10% 0px -70% 0px',
+      threshold: 0.05
+    }
+  );
+
+  sections.forEach((s) => mapScrollObserver.observe(s));
+}
+
 function renderSeasonMap() {
   const player = storage.getActivePlayer();
   const house = HOUSES[player?.house] || HOUSES.gryffindor;
@@ -412,6 +445,8 @@ function renderSeasonMap() {
       showToast(`🎁 Đã mở ${res.chestMeta.tierName} Chương ${chId}: ${res.chestMeta.summary}${cardNote}`);
     });
   });
+
+  setupMapScrollObserver();
 }
 
 const appShell = document.querySelector('.app-shell');
@@ -1531,19 +1566,48 @@ function renderShopItems() {
   });
 }
 
-function openGuideAndShop() {
+function setGuideActiveTab(tab = 'shop') {
+  const container = document.getElementById('guide-grid-container');
+  const btnShop = document.getElementById('tab-guide-shop');
+  const btnRules = document.getElementById('tab-guide-rules');
+  if (!container) return;
+
+  const isShop = tab === 'shop';
+  container.dataset.activeTab = isShop ? 'shop' : 'rules';
+  if (btnShop) {
+    btnShop.classList.toggle('active', isShop);
+    btnShop.setAttribute('aria-selected', isShop ? 'true' : 'false');
+  }
+  if (btnRules) {
+    btnRules.classList.toggle('active', !isShop);
+    btnRules.setAttribute('aria-selected', !isShop ? 'true' : 'false');
+  }
+}
+
+function openGuideAndShop(defaultTab = 'shop') {
   renderShopItems();
+  setGuideActiveTab(defaultTab);
   openModal(guideDialog);
 }
 
-document.getElementById('btn-open-guide').addEventListener('click', () => {
+document.getElementById('tab-guide-shop')?.addEventListener('click', () => {
   sound.playSelect();
-  openGuideAndShop();
+  setGuideActiveTab('shop');
 });
 
-document.getElementById('btn-open-shop').addEventListener('click', () => {
+document.getElementById('tab-guide-rules')?.addEventListener('click', () => {
   sound.playSelect();
-  openGuideAndShop();
+  setGuideActiveTab('rules');
+});
+
+document.getElementById('btn-open-guide')?.addEventListener('click', () => {
+  sound.playSelect();
+  openGuideAndShop('shop');
+});
+
+document.getElementById('btn-open-shop')?.addEventListener('click', () => {
+  sound.playSelect();
+  openGuideAndShop('shop');
 });
 
 function renderAlbumModal() {

@@ -427,8 +427,17 @@
         </div>
         <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
 
-        <div class="guide-grid">
-          <section class="guide-box">
+        <div class="guide-tabs" id="guide-tabs" role="tablist" aria-label="Phân loại Tiệm và Cẩm nang">
+          <button type="button" class="guide-tab-btn active" id="tab-guide-shop" role="tab" aria-selected="true" aria-controls="guide-section-shop">
+            🛍️ Tiệm Kẹo Phép
+          </button>
+          <button type="button" class="guide-tab-btn" id="tab-guide-rules" role="tab" aria-selected="false" aria-controls="guide-section-rules">
+            ✨ Cẩm Nang Combo
+          </button>
+        </div>
+
+        <div class="guide-grid" id="guide-grid-container" data-active-tab="shop">
+          <section class="guide-box" id="guide-section-rules" role="tabpanel" aria-labelledby="tab-guide-rules">
             <h3>✨ Cẩm Nang Cơ Chế Chuẩn Candy Crush × Hogwarts</h3>
             <ul class="spell-rules-list">
               <li>
@@ -462,7 +471,7 @@
             </ul>
           </section>
 
-          <section class="guide-box">
+          <section class="guide-box" id="guide-section-shop" role="tabpanel" aria-labelledby="tab-guide-shop">
             <div class="shop-title-row">
               <h3>🛍️ Tiệm Kẹo Công Tước Mật</h3>
               <span class="chip chip-gold"><span class="coin-dot">G</span> <strong id="shop-galleons">250</strong></span>
