@@ -59,17 +59,22 @@ export class BoardRenderer {
         this.bgDirty = true;
         this.onSpriteReady?.();
       };
+      img.onerror = () => {
+        if (url.endsWith('.webp')) {
+          img.src = url.replace(/\.webp$/, '.png');
+        }
+      };
       img.src = url;
       this.sprites[key] = img;
     };
 
     for (let i = 0; i < 6; i++) {
-      load(`c_${i}`, `/assets/candy-${i}.png`);
-      load(`c_${i}_sh`, `/assets/candy-${i}-sh.png`);
-      load(`c_${i}_sv`, `/assets/candy-${i}-sv.png`);
-      load(`c_${i}_wr`, `/assets/candy-${i}-wrapped.png`);
+      load(`c_${i}`, `/assets/candy-${i}.webp`);
+      load(`c_${i}_sh`, `/assets/candy-${i}-sh.webp`);
+      load(`c_${i}_sv`, `/assets/candy-${i}-sv.webp`);
+      load(`c_${i}_wr`, `/assets/candy-${i}-wrapped.webp`);
     }
-    load('color_bomb', '/assets/candy-colorbomb.png');
+    load('color_bomb', '/assets/candy-colorbomb.webp');
   }
 
   getSpriteForPiece(piece) {

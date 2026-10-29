@@ -199,8 +199,8 @@ export const TILE_TYPES = [
     color: '#e6192e',
     light: '#ff6b7a',
     dark: '#9e0014',
-    img: '/assets/candy-0.png',
-    svg: `<img src="/assets/candy-0.png" alt="Kẹo Đậu Đỏ Bertie" draggable="false" />`
+    img: '/assets/candy-0.webp',
+    svg: `<img src="/assets/candy-0.webp" alt="Kẹo Đậu Đỏ Bertie" draggable="false" />`
   },
   {
     id: 1,
@@ -210,8 +210,8 @@ export const TILE_TYPES = [
     color: '#ff7b00',
     light: '#ffb84d',
     dark: '#b85000',
-    img: '/assets/candy-1.png',
-    svg: `<img src="/assets/candy-1.png" alt="Kẹo Đậu Cam Bí Ngô" draggable="false" />`
+    img: '/assets/candy-1.webp',
+    svg: `<img src="/assets/candy-1.webp" alt="Kẹo Đậu Cam Bí Ngô" draggable="false" />`
   },
   {
     id: 2,
@@ -221,8 +221,8 @@ export const TILE_TYPES = [
     color: '#1ec92a',
     light: '#74ff7d',
     dark: '#0a7d12',
-    img: '/assets/candy-2.png',
-    svg: `<img src="/assets/candy-2.png" alt="Kẹo Đậu Đôi Xanh Lá" draggable="false" />`
+    img: '/assets/candy-2.webp',
+    svg: `<img src="/assets/candy-2.webp" alt="Kẹo Đậu Đôi Xanh Lá" draggable="false" />`
   },
   {
     id: 3,
@@ -232,8 +232,8 @@ export const TILE_TYPES = [
     color: '#0ea5e9',
     light: '#7dd3fc',
     dark: '#035fa3',
-    img: '/assets/candy-3.png',
-    svg: `<img src="/assets/candy-3.png" alt="Kẹo Đậu Lam Việt Quất" draggable="false" />`
+    img: '/assets/candy-3.webp',
+    svg: `<img src="/assets/candy-3.webp" alt="Kẹo Đậu Lam Việt Quất" draggable="false" />`
   },
   {
     id: 4,
@@ -243,8 +243,8 @@ export const TILE_TYPES = [
     color: '#9333ea',
     light: '#f5b041',
     dark: '#5b2c06',
-    img: '/assets/candy-4.png',
-    svg: `<img src="/assets/candy-4.png" alt="Ếch Sô-cô-la" draggable="false" />`
+    img: '/assets/candy-4.webp',
+    svg: `<img src="/assets/candy-4.webp" alt="Ếch Sô-cô-la" draggable="false" />`
   },
   {
     id: 5,
@@ -254,8 +254,8 @@ export const TILE_TYPES = [
     color: '#ffc400',
     light: '#fff066',
     dark: '#b88600',
-    img: '/assets/candy-5.png',
-    svg: `<img src="/assets/candy-5.png" alt="Kẹo Đậu Vàng Chanh Sủi" draggable="false" />`
+    img: '/assets/candy-5.webp',
+    svg: `<img src="/assets/candy-5.webp" alt="Kẹo Đậu Vàng Chanh Sủi" draggable="false" />`
   }
 ];
 
@@ -277,9 +277,9 @@ export const OBSTACLE_ICONS = {
   horcrux: `<svg viewBox="0 0 44 44" aria-hidden="true"><polygon points="22,3 38,14 34,36 22,41 10,36 6,14" fill="#1e1b4b" stroke="#fde047" stroke-width="2.8"/><polygon points="22,10 31,18 28,32 22,35 16,32 13,18" fill="#064e3b" stroke="#34d399" stroke-width="2"/><circle cx="22" cy="22" r="4.5" fill="#a855f7" stroke="#fef08a" stroke-width="1.8"/></svg>`,
   boss: `<svg viewBox="0 0 44 44" aria-hidden="true"><polygon points="22,3 39,13 35,35 22,41 9,35 5,13" fill="#581c87" stroke="#fde047" stroke-width="2.8"/><path d="M15 19L20 23M29 19L24 23" stroke="#f87171" stroke-width="3" stroke-linecap="round"/><path d="M16 31C19 28 25 28 28 31" stroke="#fde047" stroke-width="2.6" stroke-linecap="round"/></svg>`,
   score: `<svg viewBox="0 0 44 44" aria-hidden="true"><path d="M22 4L27.5 15.5L40 17.3L31 26.1L33.1 38.5L22 32.6L10.9 38.5L13 26.1L4 17.3L16.5 15.5L22 4Z" fill="#f59e0b" stroke="#fef9c3" stroke-width="2.6"/></svg>`,
-  special_striped: `<img src="/assets/candy-0-sh.png" alt="Kẹo Sọc Phép" draggable="false" />`,
-  special_wrapped: `<img src="/assets/candy-2-wrapped.png" alt="Gói Kẹo Bọc" draggable="false" />`,
-  special_color_bomb: `<img src="/assets/candy-colorbomb.png" alt="Cầu Đậu Ngũ Sắc" draggable="false" />`,
+  special_striped: `<img src="/assets/candy-0-sh.webp" alt="Kẹo Sọc Phép" draggable="false" />`,
+  special_wrapped: `<img src="/assets/candy-2-wrapped.webp" alt="Gói Kẹo Bọc" draggable="false" />`,
+  special_color_bomb: `<img src="/assets/candy-colorbomb.webp" alt="Cầu Đậu Ngũ Sắc" draggable="false" />`,
   special_seeker: `<svg viewBox="0 0 44 44" aria-hidden="true"><path d="M3 16C10 10 15 14 17 20C11 22 6 21 3 16Z" fill="#fde047"/><path d="M41 16C34 10 29 14 27 20C33 22 38 21 41 16Z" fill="#fde047"/><circle cx="22" cy="23" r="10" fill="#f59e0b" stroke="#fef9c3" stroke-width="2.5"/></svg>`
 };
 
@@ -1018,7 +1018,7 @@ export const BOOSTERS = [
     shortName: 'Búa Đũa Phép',
     desc: 'Vung Búa Kẹo Đũa Phép đập vỡ ngay 1 viên kẹo, gỡ Bom, phá Khiên Linh Giá hoặc 1 lớp Vật Cản không tốn lượt!',
     price: 90,
-    iconSvg: `<img src="/assets/booster-lollipop.png" alt="Búa Kẹo Đũa Phép" draggable="false" />`
+    iconSvg: `<img src="/assets/booster-lollipop.webp" alt="Búa Kẹo Đũa Phép" draggable="false" />`
   },
   {
     id: 'swap',
@@ -1026,7 +1026,7 @@ export const BOOSTERS = [
     shortName: 'Đổi Tự Do',
     desc: 'Vẫy đũa phép hoán đổi tự do 2 viên Kẹo Bertie hoặc Ếch Sô-cô-la liền kề không tốn lượt đi.',
     price: 110,
-    iconSvg: `<img src="/assets/booster-swap.png" alt="Đũa Phép Đổi Kẹo" draggable="false" />`
+    iconSvg: `<img src="/assets/booster-swap.webp" alt="Đũa Phép Đổi Kẹo" draggable="false" />`
   },
   {
     id: 'shuffle',
@@ -1034,7 +1034,7 @@ export const BOOSTERS = [
     shortName: 'Xoáy Kẹo',
     desc: 'Xoay Đồng Hồ Cát Đường Vàng xáo trộn toàn bộ kẹo trên bàn cờ để mở chuỗi Combo mới!',
     price: 80,
-    iconSvg: `<img src="/assets/booster-shuffle.png" alt="Kẹo Xoáy Thời Gian" draggable="false" />`
+    iconSvg: `<img src="/assets/booster-shuffle.webp" alt="Kẹo Xoáy Thời Gian" draggable="false" />`
   },
   {
     id: 'extraMoves',
@@ -1042,7 +1042,7 @@ export const BOOSTERS = [
     shortName: '+5 Lượt',
     desc: 'Nhấp mật kẹo vàng Phúc Lạc Dược cộng ngay +5 lượt đi (và lùi +5 nhịp Bom Đếm Ngược)!',
     price: 140,
-    iconSvg: `<img src="/assets/booster-extramoves.png" alt="Kẹo Phúc Lạc +5" draggable="false" />`
+    iconSvg: `<img src="/assets/booster-extramoves.webp" alt="Kẹo Phúc Lạc +5" draggable="false" />`
   }
 ];
 
@@ -1054,7 +1054,7 @@ export const PREGAME_BOOSTERS = [
     shortName: 'Cầu Ngũ Sắc',
     desc: 'Đặt sẵn 1 Cầu Sô-cô-la Đính Đậu Đủ Vị ngay khi mở bàn cờ!',
     price: 95,
-    iconSvg: `<img src="/assets/candy-colorbomb.png" alt="Cầu Đậu Đầu Trận" draggable="false" />`
+    iconSvg: `<img src="/assets/candy-colorbomb.webp" alt="Cầu Đậu Đầu Trận" draggable="false" />`
   },
   {
     id: 'pre_striped_wrapped',
@@ -1062,7 +1062,7 @@ export const PREGAME_BOOSTERS = [
     shortName: 'Sọc + Bọc',
     desc: 'Đặt sẵn 1 Kẹo Sọc + 1 Gói Kẹo Bọc Giấy nổ 2 nhịp ngay lượt đầu!',
     price: 85,
-    iconSvg: `<img src="/assets/candy-0-wrapped.png" alt="Cặp Sọc và Bọc" draggable="false" />`
+    iconSvg: `<img src="/assets/candy-0-wrapped.webp" alt="Cặp Sọc và Bọc" draggable="false" />`
   },
   {
     id: 'pre_lucky_seeker',
