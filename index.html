@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#070912" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Candy Crush Hogwarts — Kẹo Đậu Bertie & Ếch Sô-cô-la (Season 1: 100 Màn)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/png" href="/assets/icon-bertie-box.png" />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <div class="candy-bg" aria-hidden="true"></div>
+
+    <div class="app-shell">
+      <!-- Thanh Tiêu Đề Tiệm Kẹo Phép Thuật Công Tước Mật (Honeydukes × Hogwarts) -->
+      <header class="topbar">
+        <button type="button" class="brand" id="btn-home-brand" title="Về Bản Đồ Season 1">
+          <img src="/assets/icon-bertie-box.png" alt="" class="brand-candy-icon" />
+          <div class="brand-text">
+            <span class="brand-title">CANDY CRUSH <span class="brand-hpvn">HOGWARTS</span></span>
+            <span class="brand-sub">Kẹo Đậu Đủ Vị Bertie & Ếch Sô-cô-la • 100 Màn</span>
+          </div>
+        </button>
+
+        <div class="topbar-actions">
+          <button type="button" class="wizard-pill" id="btn-open-profile" title="Hồ sơ Phù Thủy & Chọn Nhà">
+            <span class="wizard-crest" id="hud-house-crest"></span>
+            <span class="wizard-meta">
+              <strong id="hud-wizard-name">Phù Thủy Mới</strong>
+              <small id="hud-house-name">Chọn Nhà</small>
+            </span>
+          </button>
+
+          <div class="stat-chips">
+            <button
+              type="button"
+              class="chip chip-hearts"
+              id="btn-hearts-chip"
+              title="Tim Phép Thuật (15 phút hồi 1 Tim — bấm để nạp đầy ngay)"
+            >
+              <span class="heart-glyph" aria-hidden="true">❤️</span>
+              <span class="visually-hidden">Tim Phép Thuật: </span>
+              <strong id="hud-hearts">5/5</strong>
+              <small class="heart-timer" id="hud-heart-timer" hidden>15:00</small>
+            </button>
+
+            <span class="chip chip-streak" id="chip-streak" title="Chuỗi Thắng Chiếc Cốc Lửa — Tặng sẵn Kẹo Phép đầu trận!">
+              <span aria-hidden="true">🔥</span>
+              <strong id="hud-streak">×0</strong>
+            </span>
+
+            <span class="chip chip-gold" title="Vàng Galleon Kẹo Phép">
+              <span class="coin-dot" aria-hidden="true">G</span>
+              <strong id="hud-galleons">250</strong>
+            </span>
+
+            <span class="chip chip-star" title="Tổng Sao Season 1">
+              <span class="star-glyph" aria-hidden="true">★</span>
+              <strong id="hud-total-stars">0/300</strong>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="candy-nav-btn btn-candy-purple"
+            id="btn-open-wheel"
+            title="Vòng Quay Phép Thuật Công Tước Mật Hàng Ngày"
+          >
+            <span aria-hidden="true">🎡</span>
+            <span class="btn-label-desktop">Quay Thưởng</span>
+            <span class="btn-label-mobile">Quay</span>
+            <span class="free-spin-dot" id="wheel-free-dot" hidden aria-label="Có lượt quay miễn phí"></span>
+          </button>
+
+          <button
+            type="button"
+            class="candy-nav-btn btn-candy-purple"
+            id="btn-open-album"
+            title="Bộ Sưu Tập 12 Thẻ Ếch Sô-cô-la Danh Nhân"
+          >
+            <span aria-hidden="true">🃏</span>
+            <span class="btn-label-desktop">Thẻ Ếch</span>
+            <strong id="hud-album-count">0/12</strong>
+          </button>
+
+          <button type="button" class="candy-nav-btn btn-candy-yellow" id="btn-open-leaderboard" title="Bảng Xếp Hạng & Cúp 4 Nhà">
+            <span aria-hidden="true">🏆</span>
+            <span class="btn-label-desktop">BXH & Cúp Nhà</span>
+            <span class="btn-label-mobile">Cúp</span>
+          </button>
+
+          <button type="button" class="candy-nav-btn btn-candy-green" id="btn-open-guide" title="Công Thức Kẹo Phép & Tiệm Công Tước Mật">
+            <span aria-hidden="true">🐸</span>
+            <span class="btn-label-desktop">Kẹo Phép & Tiệm</span>
+            <span class="btn-label-mobile">Tiệm</span>
+          </button>
+
+          <button
+            type="button"
+            class="candy-nav-btn btn-candy-blue"
+            id="btn-toggle-bgm"
+            aria-label="Nhạc nền Đêm Hogwarts"
+            aria-pressed="true"
+            title="Bật/Tắt Nhạc Nền Celesta Đêm Hogwarts"
+          >
+            <span id="bgm-icon" aria-hidden="true">🎵</span>
+          </button>
+
+          <button
+            type="button"
+            class="candy-nav-btn btn-candy-pink"
+            id="btn-toggle-sound"
+            aria-label="Hiệu ứng âm thanh"
+            aria-pressed="true"
+            title="Bật/Tắt Âm Thanh Kẹo Nổ & Giọng Khen"
+          >
+            <span id="sound-icon" aria-hidden="true">🔊</span>
+          </button>
+        </div>
+      </header>
+
+      <main id="main-content" class="app-main">
+        <!-- MÀN HÌNH 1: BẢN ĐỒ ĐƯỜNG MÒN UỐN LƯỢN SAGA SEASON 1 (100 MÀN) -->
+        <div id="view-map" class="view-map">
+          <h1 class="visually-hidden">Bản Đồ Season 1 — Candy Crush Hogwarts</h1>
+          <div class="map-toolbar">
+            <nav class="chapter-tabs" id="chapter-tabs" aria-label="Chọn Chương Season 1"></nav>
+            <div class="map-quick-tools">
+              <button type="button" class="candy-pill-btn btn-candy-green" id="btn-jump-current">
+                ▶ Tới Màn <span id="lbl-current-level">1</span>
+              </button>
+              <button
+                type="button"
+                class="candy-pill-btn btn-candy-purple"
+                id="btn-map-album"
+                title="Bộ Sưu Tập 12 Thẻ Ếch Sô-cô-la & Chỉ Số Vĩnh Viễn"
+              >
+                🃏 Thẻ Ếch: <strong id="lbl-map-album">0/12</strong>
+              </button>
+              <button type="button" class="candy-pill-btn btn-candy-blue" id="btn-toggle-preview" aria-pressed="false">
+                🔓 <span class="btn-label-desktop">Mở Thử </span>100 Màn: <strong id="lbl-preview-state">Tắt</strong>
+              </button>
+            </div>
+          </div>
+
+          <div class="map-scroll-container" id="map-scroll-container">
+            <div id="chapters-list" class="chapters-list"></div>
+          </div>
+        </div>
+
+        <!-- MÀN HÌNH 2: BÀN CỜ KẸO ĐẬU BERTIE & ẾCH SÔ-CÔ-LA -->
+        <div id="view-game" class="view-game" hidden>
+          <div class="arena-layout">
+            <!-- Bảng Điểm & Mục Tiêu Phép Thuật -->
+            <aside class="arena-hud" aria-label="Thông tin và mục tiêu màn chơi">
+              <div class="arena-hud-top">
+                <button type="button" class="candy-pill-btn btn-candy-pink" id="btn-back-map">← Bản Đồ</button>
+                <div class="level-badge-box">
+                  <span class="level-tag" id="game-level-num">MÀN 1</span>
+                  <h1 class="level-name" id="game-level-title">Đứa Bé Sống Sót</h1>
+                </div>
+                <button
+                  type="button"
+                  class="candy-pill-btn btn-candy-blue"
+                  id="btn-restart-level"
+                  aria-label="Chơi lại màn này"
+                  title="Chơi lại màn này"
+                >↻</button>
+              </div>
+
+              <div class="hud-stats-row">
+                <div class="moves-orb" aria-live="polite">
+                  <span class="moves-label">LƯỢT</span>
+                  <strong class="moves-value" id="game-moves-left">24</strong>
+                </div>
+
+                <div class="score-progress-card">
+                  <div class="score-row">
+                    <span>Điểm Kẹo Phép</span>
+                    <strong id="game-score">0</strong>
+                  </div>
+                  <div class="star-bar-track">
+                    <div class="star-bar-fill" id="game-star-fill" style="width: 0%"></div>
+                    <span class="star-marker m1" id="star-mark-1" aria-hidden="true" title="1 Sao">★</span>
+                    <span class="star-marker m2" id="star-mark-2" aria-hidden="true" title="2 Sao">★</span>
+                    <span class="star-marker m3" id="star-mark-3" aria-hidden="true" title="3 Sao">★</span>
+                  </div>
+                  <div class="boss-hud-strip" id="boss-hud-strip" hidden>
+                    <span class="boss-hud-label" id="boss-hud-label">🐍 Chúa Tể Voldemort</span>
+                    <progress
+                      id="boss-hp-progress"
+                      class="candy-progress boss-hp-progress"
+                      max="2280"
+                      value="2280"
+                      aria-labelledby="boss-hud-label"
+                    ></progress>
+                    <small class="boss-hud-meta" id="boss-hud-meta">2280 HP</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="objectives-panel">
+                <span class="objectives-heading">MỤC TIÊU MÀN CHƠI</span>
+                <div class="objectives-grid" id="game-objectives"></div>
+              </div>
+            </aside>
+
+            <!-- Khung Bàn Cờ Hắc Thạch Viền Vàng Cổ -->
+            <section class="board-stage" aria-label="Bàn cờ Kẹo Phép Hogwarts">
+              <div class="booster-hint-banner" id="booster-active-banner" hidden>
+                <span id="booster-banner-text">Chạm vào 1 viên kẹo để dùng trợ giúp phép thuật!</span>
+                <button type="button" class="mini-cancel-btn" id="btn-cancel-booster">Huỷ</button>
+              </div>
+              <div class="board-frame">
+                <canvas
+                  id="game-canvas"
+                  width="640"
+                  height="640"
+                  tabindex="0"
+                  role="application"
+                  aria-label="Bàn cờ Kẹo Phép Hogwarts — Dùng phím mũi tên di chuyển, Enter hoặc Space để chọn và đổi kẹo, Esc để bỏ chọn"
+                ></canvas>
+              </div>
+            </section>
+
+            <!-- Thanh Bảo Bối Kẹo Công Tước Mật & Nộ Thần Hộ Mệnh (In-Game Boosters + Patronus) -->
+            <aside class="boosters-dock" aria-label="Thần Hộ Mệnh và Bảo bối trợ giúp Công Tước Mật">
+              <div class="boosters-header">
+                <div class="patronus-widget">
+                  <button
+                    type="button"
+                    class="patronus-cast-btn"
+                    id="btn-cast-patronus"
+                    disabled
+                    title="Tích đầy 100% Nộ Phép để triệu hồi Thần Hộ Mệnh miễn phí lượt đi! (Phím P)"
+                  >
+                    <span id="patronus-emoji" aria-hidden="true">🦌</span>
+                    <span id="patronus-label">Hộ Mệnh 0%</span>
+                  </button>
+                  <progress
+                    id="patronus-progress"
+                    class="candy-progress patronus-progress"
+                    max="100"
+                    value="0"
+                    aria-labelledby="patronus-label"
+                  ></progress>
+                </div>
+                <button type="button" class="link-shop-btn" id="btn-open-shop">+ Mua thêm</button>
+              </div>
+              <div class="boosters-list" id="game-boosters-list"></div>
+            </aside>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast-container" class="toast-container" popover="manual" aria-live="polite"></div>
+
+    <!-- HỘP THOẠI 1: NHẬP TÊN PHÙ THỦY & CHỌN NHÀ HOGWARTS -->
+    <dialog id="profile-dialog" class="candy-dialog" aria-labelledby="profile-dialog-title" closedby="any">
+      <div class="dialog-card">
+        <div class="dialog-ribbon">
+          <h2 id="profile-dialog-title">🎩 Hồ Sơ Phù Thủy & Phân Loại Nhà</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng hộp thoại">✕</button>
+
+        <p class="dialog-lead" id="sorting-hat-quote">
+          “Nhập tên Phù Thủy và chọn Nhà Hogwarts để tích điểm Kẹo Đậu Bertie & Ếch Sô-cô-la tranh Cúp 4 Nhà!”
+        </p>
+
+        <form id="profile-form" class="wizard-form">
+          <div class="field-group">
+            <label for="wizard-name-input">Tên Phù Thủy</label>
+            <div class="input-with-action">
+              <input
+                id="wizard-name-input"
+                name="wizardName"
+                type="text"
+                maxlength="26"
+                required
+                autocomplete="nickname"
+                placeholder="VD: Minh Potter, Thảo Granger..."
+                autofocus
+              />
+              <button type="button" class="candy-pill-btn btn-candy-blue" id="btn-random-hat">
+                🎩 Nón Phân Loại
+              </button>
+            </div>
+          </div>
+
+          <fieldset class="houses-fieldset">
+            <legend>Chọn 1 trong 4 Nhà Hogwarts để đua Cúp</legend>
+            <div class="houses-grid" id="houses-selector-grid"></div>
+          </fieldset>
+
+          <div class="form-actions">
+            <button type="submit" class="candy-cta-btn cta-pink" id="btn-save-profile">
+              ▶ Nhập Học & Chơi Ngay!
+            </button>
+          </div>
+        </form>
+
+        <div class="switcher-section" id="player-switcher-section" hidden>
+          <div class="switcher-header">
+            <span>Đổi Phù Thủy trên máy này (Thi đấu)</span>
+            <button type="button" class="candy-pill-btn btn-candy-green" id="btn-new-challenger">+ Phù Thủy Mới</button>
+          </div>
+          <div class="saved-players-list" id="saved-players-list"></div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 2: MỞ MÀN CHƠI + BÙA ĐẦU TRẬN & CHUỖI CỐC LỬA (LEVEL BRIEFING) -->
+    <dialog id="briefing-dialog" class="candy-dialog" aria-labelledby="briefing-title" closedby="any">
+      <div class="dialog-card dialog-medium">
+        <div class="dialog-ribbon">
+          <span class="ribbon-sub" id="briefing-kicker">CHƯƠNG 1</span>
+          <h2 id="briefing-title">Màn 1</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
+
+        <div class="briefing-meta" id="briefing-meta"></div>
+
+        <div class="streak-banner" id="briefing-streak-banner"></div>
+
+        <div class="briefing-objectives-box">
+          <h3>Mục tiêu màn chơi</h3>
+          <div class="briefing-objectives" id="briefing-objectives"></div>
+        </div>
+
+        <div class="briefing-preboosters-box">
+          <h3>Bùa Trợ Giúp Đầu Trận (Chọn mang vào bàn)</h3>
+          <div class="preboosters-grid" id="briefing-preboosters"></div>
+        </div>
+
+        <div class="briefing-footer">
+          <button type="button" class="candy-cta-btn cta-pink" id="btn-start-level" autofocus>
+            ▶ Vào Màn Ngay!
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 3: KẾT QUẢ MÀN CHƠI (BERTIE CRUSH / OUT OF MOVES / BOMB EXPLODED) -->
+    <dialog id="result-dialog" class="candy-dialog" aria-labelledby="result-title" closedby="none" data-locked="true">
+      <div class="dialog-card dialog-compact result-card">
+        <div class="dialog-ribbon">
+          <span class="ribbon-sub" id="result-badge">BERTIE CRUSH!</span>
+          <h2 id="result-title">Ngọt Ngào Phép Thuật!</h2>
+        </div>
+
+        <div class="result-stars" id="result-stars" role="img" aria-label="Đạt 0 trên 3 sao">
+          <span class="big-star" aria-hidden="true">★</span>
+          <span class="big-star" aria-hidden="true">★</span>
+          <span class="big-star" aria-hidden="true">★</span>
+        </div>
+
+        <div class="result-summary" id="result-summary"></div>
+
+        <div class="result-actions" id="result-actions"></div>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 4: BẢNG XẾP HẠNG, CÚP 4 NHÀ & ĐỒNG BỘ SAVE JSON -->
+    <dialog id="leaderboard-dialog" class="candy-dialog" aria-labelledby="leaderboard-title" closedby="any">
+      <div class="dialog-card dialog-wide">
+        <div class="dialog-ribbon">
+          <h2 id="leaderboard-title">🏆 Bảng Xếp Hạng & Cúp 4 Nhà Hogwarts</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
+
+        <section class="house-cup-section" aria-label="Điểm Cúp 4 Nhà">
+          <div class="hourglass-grid" id="house-cup-grid"></div>
+        </section>
+
+        <div class="lb-controls">
+          <div class="lb-filter-pills" id="lb-house-filters">
+            <button type="button" class="filter-pill active" data-house="all" aria-pressed="true">Tất Cả</button>
+            <button type="button" class="filter-pill" data-house="gryffindor" aria-pressed="false">Gryffindor</button>
+            <button type="button" class="filter-pill" data-house="slytherin" aria-pressed="false">Slytherin</button>
+            <button type="button" class="filter-pill" data-house="ravenclaw" aria-pressed="false">Ravenclaw</button>
+            <button type="button" class="filter-pill" data-house="hufflepuff" aria-pressed="false">Hufflepuff</button>
+          </div>
+          <div class="lb-tools">
+            <button type="button" class="candy-pill-btn btn-candy-blue" id="btn-lb-toggle-npc" aria-pressed="true">👥 Học viên mẫu: Bật</button>
+            <button type="button" class="candy-pill-btn btn-candy-green" id="btn-lb-new-player">+ Đổi / Thêm Phù Thủy</button>
+            <button type="button" class="candy-pill-btn btn-candy-yellow" id="btn-lb-export">📥 Xuất CSV</button>
+            <button type="button" class="candy-pill-btn btn-candy-purple" id="btn-save-export-json">💾 Sao Lưu JSON</button>
+            <button type="button" class="candy-pill-btn btn-candy-pink" id="btn-save-import-json">📂 Nạp Save JSON</button>
+            <input type="file" id="save-import-file" accept="application/json,.json" hidden />
+          </div>
+        </div>
+
+        <div class="lb-table-wrap" tabindex="0" role="region" aria-labelledby="leaderboard-title">
+          <table class="lb-table">
+            <caption class="visually-hidden">Bảng xếp hạng điểm số và sao của các Phù Thủy theo Nhà Hogwarts</caption>
+            <thead>
+              <tr>
+                <th scope="col">Hạng</th>
+                <th scope="col">Phù Thủy</th>
+                <th scope="col">Nhà</th>
+                <th scope="col">Màn</th>
+                <th scope="col">Sao</th>
+                <th scope="col">Tổng Điểm</th>
+              </tr>
+            </thead>
+            <tbody id="lb-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 5: CÔNG THỨC KẸO PHÉP & TIỆM CÔNG TƯỚC MẬT -->
+    <dialog id="guide-dialog" class="candy-dialog" aria-labelledby="guide-title" closedby="any">
+      <div class="dialog-card dialog-wide">
+        <div class="dialog-ribbon">
+          <h2 id="guide-title">🐸 Công Thức Kẹo Phép & Tiệm Công Tước Mật</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
+
+        <div class="guide-grid">
+          <section class="guide-box">
+            <h3>✨ Cẩm Nang Cơ Chế Chuẩn Candy Crush × Hogwarts</h3>
+            <ul class="spell-rules-list">
+              <li>
+                <strong>🍬 Kẹo Sọc Theo Hướng Vuốt (Ghép 4 thẳng hàng):</strong>
+                Vuốt ngang tạo Sọc Ngang, vuốt dọc tạo Sọc Dọc — phóng tia phép quét sạch hàng/cột (lưu ý bị chặn tại ô <em>Xoáy Cam Thảo</em>)!
+              </li>
+              <li>
+                <strong>🪶 Kẹo Cánh Vàng Tầm Thủ (Ghép Ô Vuông 2×2):</strong>
+                Vuốt đổi chỗ trực tiếp hoặc ghép bộ để triệu hồi cánh Snitch bay vòng cung bắn tỉa thẳng vào Bom, Chướng ngại vật hoặc Kẹo mục tiêu!
+              </li>
+              <li>
+                <strong>🎁 Gói Kẹo Bọc Nổ Kép 2 Nhịp (Ghép chữ T / chữ L):</strong>
+                Nổ chấn động vùng <strong>3×3</strong> nhịp 1, rơi theo trọng lực rồi tự động kích <strong>Nổ Kép 3×3 nhịp 2</strong>!
+              </li>
+              <li>
+                <strong>🍫 Cầu Đậu Ngũ Sắc (Ghép 5) & Đại Tiệc Phối Hợp:</strong>
+                Đổi chỗ với Kẹo Sọc / Kẹo Bọc / Cánh Vàng Tầm Thủ để nhân bản hàng loạt khắp bàn cờ; 2 Cầu Ngũ Sắc xoá sạch toàn bàn!
+              </li>
+              <li>
+                <strong>💎 Bảo Vật & Chướng Ngại Vật Kinh Điển:</strong>
+                Dẫn <em>Hòn Đá Phù Thủy</em> xuống đáy bàn; phá <em>Đá Cổ Ngữ</em>, <em>Xoáy Cam Thảo</em>, <em>Sô-cô-la Tự Lan</em>, <em>Bom Đếm Ngược</em> và dùng <em>Lò Sưởi Bột Floo</em> dịch chuyển!
+              </li>
+              <li>
+                <strong>🔄 Băng Chuyền • 🧪 Vạc Độc Dược • 🗝️ Khoá Gringotts:</strong>
+                <em>Băng Chuyền</em> xoay vòng kẹo 1 nấc cuối mỗi lượt; <em>Vạc Độc Dược (3 HP)</em> tự trào bọt cản đường sau mỗi 3 lượt nếu không bị ghép kẹo sát cạnh làm choáng; ăn kẹo mang <em>Chìa Khoá Đường Vàng</em> để mở các ô <em>Ổ Khoá Gringotts</em>!
+              </li>
+              <li>
+                <strong>🦌 Thần Hộ Mệnh 4 Nhà • 👑 Đấu Trùm • 🃏 12 Thẻ Ếch:</strong>
+                Mỗi Nhà Hogwarts có Nội Tại riêng và Thanh Nộ <em>Expecto Patronum</em> (100% tung tuyệt kỹ miễn phí lượt đi, phím <code>P</code>); đại chiến 10 Đại Trùm ở màn 10..100, mở <em>Rương Sao Chương (20★/40★/60★)</em> và sưu tầm <em>12 Thẻ Ếch Danh Nhân</em> cộng chỉ số vĩnh viễn!
+              </li>
+            </ul>
+          </section>
+
+          <section class="guide-box">
+            <div class="shop-title-row">
+              <h3>🛍️ Tiệm Kẹo Công Tước Mật</h3>
+              <span class="chip chip-gold"><span class="coin-dot">G</span> <strong id="shop-galleons">250</strong></span>
+            </div>
+            <div class="shop-items-list" id="shop-items-list"></div>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 6: VÒNG QUAY PHÉP THUẬT CÔNG TƯỚC MẬT HÀNG NGÀY -->
+    <dialog id="wheel-dialog" class="candy-dialog" aria-labelledby="wheel-title" closedby="any">
+      <div class="dialog-card dialog-medium wheel-card">
+        <div class="dialog-ribbon">
+          <span class="ribbon-sub">QUÀ TẶNG MỖI NGÀY</span>
+          <h2 id="wheel-title">🎡 Vòng Quay Công Tước Mật</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
+
+        <p class="dialog-lead" id="wheel-status-text">
+          Quay miễn phí 1 lần mỗi ngày để nhận Vàng Galleon, Bùa Đầu Trận, Bảo Bối hoặc Hồi Đầy 5 Tim!
+        </p>
+
+        <div class="wheel-stage">
+          <div class="wheel-pointer" aria-hidden="true">▼</div>
+          <div class="wheel-rotor" id="wheel-rotor">
+            <canvas id="wheel-canvas" width="300" height="300"></canvas>
+          </div>
+        </div>
+
+        <div class="wheel-prize-banner" id="wheel-prize-banner" aria-live="polite" hidden></div>
+
+        <button type="button" class="candy-cta-btn cta-pink" id="btn-spin-wheel">
+          🎡 Quay Miễn Phí Hôm Nay!
+        </button>
+      </div>
+    </dialog>
+
+    <!-- HỘP THOẠI 7: BỘ SƯU TẬP 12 THẺ ẾCH SÔ-CÔ-LA DANH NHÂN -->
+    <dialog id="album-dialog" class="candy-dialog" aria-labelledby="album-title" closedby="any">
+      <div class="dialog-card dialog-wide album-dialog-card">
+        <div class="dialog-ribbon">
+          <span class="ribbon-sub">BỘ SƯU TẬP PHÉP THUẬT VĨNH VIỄN</span>
+          <h2 id="album-title">🃏 Album 12 Thẻ Ếch Sô-cô-la Danh Nhân</h2>
+        </div>
+        <button type="button" class="close-x" data-close-dialog aria-label="Đóng">✕</button>
+
+        <div class="album-summary-box">
+          <div class="album-summary-top">
+            <strong id="album-count-heading">Đã sưu tầm: 0 / 12 Thẻ Danh Nhân</strong>
+            <span class="album-frog-counter" id="album-frog-counter">🐸 Đã bắt 0/40 Ếch tới thẻ kế</span>
+          </div>
+          <progress
+            id="album-progress-bar"
+            class="candy-progress album-progress"
+            max="12"
+            value="0"
+            aria-labelledby="album-count-heading"
+          ></progress>
+          <p class="album-buffs-line" id="album-buffs-summary">
+            Sưu tầm Thẻ Ếch từ Màn Trùm (10, 20...100), Rương 60★ Chương, mỗi 40 Ếch Sô-cô-la bắt được hoặc thắng 3★ lần đầu để cộng chỉ số vĩnh viễn!
+          </p>
+        </div>
+
+        <div class="frog-cards-grid" id="frog-cards-grid"></div>
+      </div>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
