@@ -1,0 +1,43 @@
+{
+  "name": "Candy Crush Hogwarts — Kẹo Đậu Bertie & Ếch Sô-cô-la",
+  "short_name": "Candy Hogwarts",
+  "description": "Game Match-3 Phép Thuật Hogwarts (Season 1: 100 Bản Đồ, Đầy Đủ Cơ Chế Chuẩn)",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070912",
+  "theme_color": "#070912",
+  "lang": "vi",
+  "dir": "ltr",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/assets/screenshots/screenshot-game.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Bàn Cờ Kẹo Đậu Bertie & Ếch Sô-cô-la 100 Màn"
+    }
+  ]
+}
