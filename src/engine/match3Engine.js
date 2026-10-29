@@ -199,6 +199,9 @@ export class Match3Engine {
   bindInput() {
     this.onPointerDown = (e) => {
       if (e.button !== 0 || this.busy || this.ended || !this.level) return;
+      if (e.pointerType === 'touch') {
+        e.preventDefault?.();
+      }
       const cell = this.renderer.screenToCell(e.clientX, e.clientY, this.size);
       if (!cell || this.mask[cell.r][cell.c] === 0) return;
 
@@ -226,8 +229,8 @@ export class Match3Engine {
       const dy = e.clientY - this.pointerState.startY;
       const threshold =
         e.pointerType === 'touch'
-          ? Math.max(11, this.renderer.cellSize * 0.24)
-          : Math.max(16, this.renderer.cellSize * 0.32);
+          ? Math.max(9, this.renderer.cellSize * 0.18)
+          : Math.max(14, this.renderer.cellSize * 0.28);
 
       if (Math.hypot(dx, dy) >= threshold) {
         this.pointerState.swiped = true;
@@ -325,6 +328,22 @@ export class Match3Engine {
     this.canvas.addEventListener('pointercancel', this.onPointerUp);
     this.canvas.addEventListener('lostpointercapture', this.onPointerUp);
     this.canvas.addEventListener('keydown', this.onKeyDown);
+
+    if (typeof document !== 'undefined') {
+      this.onVisibilityChange = () => {
+        if (document.hidden) {
+          if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+          }
+        } else {
+          if (this.level && !this.ended && !this.rafId) {
+            this.startLoop();
+          }
+        }
+      };
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+    }
   }
 
   startLoop() {
@@ -381,6 +400,7 @@ export class Match3Engine {
     this.sessionId++;
     this.level = levelData;
     this.size = levelData.size;
+    this.renderer?.invalidateBg?.();
     this.numColors = levelData.numColors;
     this.house = options.house || 'gryffindor';
     this.collectionBuffs = {
@@ -3293,19 +3313,25 @@ export class Match3Engine {
   }
 
   spawnBurst(r, c, color, count = 12) {
+    const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    const actualCount = isTouch ? Math.min(8, count) : count;
+    const maxParticles = isTouch ? 45 : 80;
+    if (this.vfx.particles.length > maxParticles) {
+      this.vfx.particles.splice(0, this.vfx.particles.length - maxParticles + actualCount);
+    }
     const center = this.renderer.cellCenter(r, c);
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
-      const speed = 45 + Math.random() * 135;
+    for (let i = 0; i < actualCount; i++) {
+      const angle = (Math.PI * 2 * i) / actualCount + Math.random() * 0.5;
+      const speed = 40 + Math.random() * 115;
       this.vfx.particles.push({
         x: center.x,
         y: center.y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 20,
-        size: 2.5 + Math.random() * 3.8,
+        vy: Math.sin(angle) * speed - 15,
+        size: 2.2 + Math.random() * 3.2,
         color,
-        life: 0.42 + Math.random() * 0.25,
-        maxLife: 0.67
+        life: 0.35 + Math.random() * 0.2,
+        maxLife: 0.55
       });
     }
   }

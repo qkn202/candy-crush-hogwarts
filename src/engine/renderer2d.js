@@ -18,11 +18,18 @@ export class BoardRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.onSpriteReady = onSpriteReady;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    this.dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.85 : 2.25);
     this.boardPx = 480;
     this.padding = 14;
     this.cellSize = 56;
     this.observedCssSize = 0;
+    this.currentGridSize = 0;
+    this.currentCssSize = 0;
+    this.bgCanvas = null;
+    this.bgCtx = null;
+    this.bgDirty = true;
+    this.lastBgKey = '';
     this.sprites = {};
     this.preloadSprites();
 
@@ -32,7 +39,10 @@ export class BoardRenderer {
           const w = entry.contentRect.width;
           const h = entry.contentRect.height || w;
           const sz = Math.floor(Math.min(w, h));
-          this.observedCssSize = sz > 0 ? sz : 0;
+          if (sz > 0 && sz !== this.observedCssSize) {
+            this.observedCssSize = sz;
+            this.bgDirty = true;
+          }
         }
         this.onSpriteReady?.();
       });
@@ -44,7 +54,10 @@ export class BoardRenderer {
     const load = (key, url) => {
       const img = new Image();
       img.decoding = 'async';
-      img.onload = () => this.onSpriteReady?.();
+      img.onload = () => {
+        this.bgDirty = true;
+        this.onSpriteReady?.();
+      };
       img.src = url;
       this.sprites[key] = img;
     };
@@ -66,6 +79,10 @@ export class BoardRenderer {
     return this.sprites[`c_${piece.color}`];
   }
 
+  invalidateBg() {
+    this.bgDirty = true;
+  }
+
   resize(gridSize) {
     let rawCssSize = this.observedCssSize;
     if (!rawCssSize || rawCssSize <= 0) {
@@ -73,11 +90,19 @@ export class BoardRenderer {
       rawCssSize = Math.floor(Math.min(rect.width, rect.height || rect.width));
     }
     const cssSize = Math.max(240, rawCssSize);
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    if (this.currentGridSize === gridSize && this.currentCssSize === cssSize) {
+      return;
+    }
+    this.currentGridSize = gridSize;
+    this.currentCssSize = cssSize;
+
+    const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    this.dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.85 : 2.25);
     const targetW = Math.round(cssSize * this.dpr);
     if (this.canvas.width !== targetW || this.canvas.height !== targetW) {
       this.canvas.width = targetW;
       this.canvas.height = targetW;
+      this.bgDirty = true;
     }
     this.boardPx = cssSize;
     this.padding = Math.max(10, Math.round(cssSize * 0.028));
@@ -99,6 +124,49 @@ export class BoardRenderer {
       x: this.padding + (c + 0.5) * this.cellSize,
       y: this.padding + (r + 0.5) * this.cellSize
     };
+  }
+
+  renderStaticBg(size, mask, cs) {
+    if (!this.bgCanvas) {
+      this.bgCanvas = document.createElement('canvas');
+      this.bgCtx = this.bgCanvas.getContext('2d');
+    }
+    const targetW = this.canvas.width;
+    const targetH = this.canvas.height;
+    if (this.bgCanvas.width !== targetW || this.bgCanvas.height !== targetH) {
+      this.bgCanvas.width = targetW;
+      this.bgCanvas.height = targetH;
+    }
+
+    const bCtx = this.bgCtx;
+    bCtx.clearRect(0, 0, targetW, targetH);
+    bCtx.save();
+    bCtx.scale(this.dpr, this.dpr);
+
+    // 1. Vẽ nền khay Hắc Thạch viền Vàng Cổ
+    this.drawBoardTray(bCtx, size, mask, cs);
+
+    // 2. Vẽ các ô nền bàn cờ
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (mask[r][c] === 0) continue;
+        const x = this.padding + c * cs;
+        const y = this.padding + r * cs;
+        const isEven = (r + c) % 2 === 0;
+
+        bCtx.fillStyle = isEven ? 'rgba(13, 18, 34, 0.93)' : 'rgba(23, 31, 56, 0.90)';
+        roundRectPath(bCtx, x + 1, y + 1, cs - 2, cs - 2, cs * 0.14);
+        bCtx.fill();
+
+        bCtx.lineWidth = 1.2;
+        bCtx.strokeStyle = 'rgba(212, 160, 23, 0.28)';
+        bCtx.stroke();
+      }
+    }
+    bCtx.restore();
+
+    this.bgDirty = false;
+    this.lastBgKey = `${size}_${this.boardPx}_${this.dpr}`;
   }
 
   render(state, now) {
@@ -128,31 +196,26 @@ export class BoardRenderer {
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = 'medium';
     ctx.clearRect(0, 0, this.boardPx, this.boardPx);
 
     if (vfx.shake > 0.2) {
       ctx.translate((Math.random() - 0.5) * vfx.shake, (Math.random() - 0.5) * vfx.shake);
     }
 
-    // 1. Vẽ nền khay Hắc Thạch viền Vàng Cổ liền khối ở các ô hoạt động
-    this.drawBoardTray(ctx, size, mask, cs);
+    // 1. Vẽ nền khay Hắc Thạch + ô nền tĩnh từ offscreen cache canvas (siêu nhanh)
+    const bgKey = `${size}_${this.boardPx}_${this.dpr}`;
+    if (this.bgDirty || this.lastBgKey !== bgKey) {
+      this.renderStaticBg(size, mask, cs);
+    }
+    ctx.drawImage(this.bgCanvas, 0, 0, this.boardPx, this.boardPx);
 
-    // 2. Vẽ ô nền, Thạch Hắc Ám (Jelly), Cổng Bột Floo, Đá Cổ Ngữ (Frosting) & Sô-cô-la Lan
+    // 2. Vẽ các phần tử động: Thạch Hắc Ám (Jelly), Đá Cổ Ngữ (Frosting), Sô-cô-la Lan, Vạc, v.v.
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
         if (mask[r][c] === 0) continue;
         const x = this.padding + c * cs;
         const y = this.padding + r * cs;
-        const isEven = (r + c) % 2 === 0;
-
-        ctx.fillStyle = isEven ? 'rgba(13, 18, 34, 0.93)' : 'rgba(23, 31, 56, 0.90)';
-        roundRectPath(ctx, x + 1, y + 1, cs - 2, cs - 2, cs * 0.14);
-        ctx.fill();
-
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = 'rgba(212, 160, 23, 0.28)';
-        ctx.stroke();
 
         if (jelly[r]?.[c] > 0) {
           this.drawCandyJelly(ctx, x + 2, y + 2, cs - 4, cs - 4, cs * 0.16, jelly[r][c]);
@@ -591,10 +654,13 @@ export class BoardRenderer {
     const renderScale = piece.special === 'seeker' ? 0.78 : 1;
     const sSize = drawSize * renderScale;
 
+    // Contact drop shadow (hardware-accelerated ellipse, 0 CPU shadowBlur overhead)
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + sSize * 0.38, sSize * 0.34, sSize * 0.12, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.fill();
+
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
-      ctx.shadowBlur = sSize * 0.12;
-      ctx.shadowOffsetY = sSize * 0.06;
       ctx.drawImage(sprite, cx - sSize / 2, cy - sSize / 2, sSize, sSize);
     } else {
       const r = sSize * 0.4;
@@ -605,7 +671,6 @@ export class BoardRenderer {
     }
 
     if (piece.special === 'seeker') {
-      ctx.shadowColor = 'transparent';
       ctx.beginPath();
       ctx.arc(cx, cy, sSize * 0.43, 0, Math.PI * 2);
       ctx.lineWidth = 2.4;
@@ -630,8 +695,11 @@ export class BoardRenderer {
     const r = size * 0.44;
     const glow = 0.75 + 0.25 * Math.sin(now * 0.006);
     ctx.save();
-    ctx.shadowColor = `rgba(239, 68, 68, ${0.75 * glow})`;
-    ctx.shadowBlur = 14;
+    // Vòng hào quang phát sáng nhẹ thay cho shadowBlur
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.25, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(239, 68, 68, ${0.25 * glow})`;
+    ctx.fill();
 
     ctx.beginPath();
     const pts = [
@@ -660,7 +728,6 @@ export class BoardRenderer {
     ctx.stroke();
 
     // Mặt cắt kim cương bên trong
-    ctx.shadowColor = 'transparent';
     ctx.beginPath();
     ctx.moveTo(cx, cy - r * 0.65);
     ctx.lineTo(cx + r * 0.45, cy - r * 0.1);
@@ -675,8 +742,12 @@ export class BoardRenderer {
   drawLicoriceSwirl(ctx, cx, cy, size) {
     const r = size * 0.43;
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-    ctx.shadowBlur = 8;
+    // Bóng đổ tiếp xúc nhanh không tốn GPU blur
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + r * 0.82, r * 0.85, r * 0.26, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+    ctx.fill();
+
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     const g = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.1, cx, cy, r);
@@ -691,7 +762,6 @@ export class BoardRenderer {
     ctx.stroke();
 
     // Đường xoáy ốc Cam Thảo đặc trưng Candy Crush
-    ctx.shadowColor = 'transparent';
     ctx.beginPath();
     for (let t = 0; t <= Math.PI * 3.7; t += 0.22) {
       const rr = (t / (Math.PI * 3.9)) * r * 0.82;
@@ -1063,20 +1133,18 @@ export class BoardRenderer {
       ctx.restore();
     }
 
-    // 5. Mảnh kẹo & bụi sao văng tung toé
-    for (const pt of vfx.particles) {
-      const alpha = Math.max(0, pt.life / pt.maxLife);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = pt.color;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pt.size * alpha, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.beginPath();
-      ctx.arc(pt.x - pt.size * 0.25, pt.y - pt.size * 0.25, pt.size * 0.3 * alpha, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    // 5. Mảnh kẹo & bụi sao văng tung toé (Vẽ theo batch, không save/restore lặp lại)
+    if (vfx.particles && vfx.particles.length > 0) {
+      for (let i = 0; i < vfx.particles.length; i++) {
+        const pt = vfx.particles[i];
+        const alpha = Math.max(0, pt.life / pt.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
 
     // 6. Chữ điểm & Khẩu hiệu phép thuật
